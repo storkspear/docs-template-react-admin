@@ -1,0 +1,48 @@
+{
+  "brand": {
+    "name": "template-react-admin",
+    "sub": "Admin Console Docs"
+  },
+  "groups": [
+    {
+      "name": "시작하기",
+      "files": [
+        {
+          "path": "README.md",
+          "title": "Overview",
+          "desc": "문서 구성 · 읽는 순서 · 짝 백엔드(template-spring) 안내"
+        }
+      ]
+    },
+    {
+      "name": "API 계약",
+      "files": [
+        {
+          "path": "api-contract/README.md",
+          "title": "API Contract",
+          "desc": "template-spring 과의 1:1 계약 구성 · 쌍 운영 규칙 · 진실의 출처"
+        },
+        {
+          "path": "api-contract/admin-api.md",
+          "title": "Admin API",
+          "desc": "엔드포인트 11개 전체 — 요청 파라미터 · 응답 shape · 에러 코드 · 시맨틱 노트"
+        }
+      ]
+    },
+    {
+      "name": "가이드",
+      "files": [
+        {
+          "path": "guide/screens.md",
+          "title": "화면 가이드",
+          "desc": "화면 9개 각각의 API · 모바일 대응 정리"
+        },
+        {
+          "path": "guide/derived-repo.md",
+          "title": "파생 레포 체크리스트",
+          "desc": "factory CLI 흐름 · 브랜딩 · 메뉴 구성 · Mock→실서버 전환"
+        }
+      ]
+    }
+  ]
+}
