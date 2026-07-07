@@ -339,7 +339,7 @@ async function loadDoc(docPath) {
     history.pushState({ doc: docPath }, '', '#' + docPath);
   } catch (e) {
     document.getElementById('content').innerHTML =
-      `<p style="color:#ef4444;padding:20px">오류: ${e.message}</p>`;
+      `<p style="color:#dc2626;padding:20px">오류: ${e.message}</p>`;
   }
 }
 
