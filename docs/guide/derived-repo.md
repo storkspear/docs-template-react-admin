@@ -71,9 +71,11 @@ export const PRIMARY = brand[600]   // 버튼·링크·활성상태 전부 이 �
 
 ```tsx
 export const NAV_ITEMS: NavItem[] = [
-  { path: '/', label: '대시보드', icon: <DashboardOutlined />, element: <DashboardPage /> },
-  { path: '/apps', label: '앱', icon: <AppstoreOutlined />, element: <AppsPage /> },
+  // group = 사이드바 그룹 헤더('공통'/'앱별'/'템플릿'), scope = 노출 조건('global'=항상, 'app'=앱 선택 시만)
+  { path: '/', label: '대시보드', icon: <DashboardOutlined />, element: <DashboardPage />, scope: 'global', group: '공통' },
+  { path: '/apps', label: '매출 분석', icon: <AppstoreOutlined />, element: <AppsPage />, scope: 'global', group: '공통' },
   { path: '/apps/:slug', element: <AppDetailPage /> },  // label 없음 = 메뉴엔 안 뜨고 라우트만
+  { path: '/users', label: '사용자', icon: <TeamOutlined />, element: <UsersPage />, scope: 'app', group: '앱별' },
   // … 이 앱에 필요 없는 화면은 통째로 줄 삭제
 ]
 ```
@@ -110,7 +112,7 @@ VITE_PROXY_TARGET_DEV=https://api-dev.example.com
 
 - [ ] `src/lib/types.ts`의 DTO가 실제 백엔드 응답 필드와 1:1인지 (`docs/api-contract/admin-api.md` 대조)
 - [ ] `src/mocks/fixtures.ts`의 슬러그(`tradelog`/`gymlog`/`moodlog`)는 데모용 — 실서버 전환 후엔 무시되니 그대로 둬도 무방하지만, 로컬 mock 데모용 문구는 이 앱 도메인에 맞게 바꿔도 좋아요
-- [ ] 로그인 자격증명이 실서버 admin 계정으로 바뀌었는지 (mock 전용 `admin@example.com`/`password` 안내 문구는 `USE_MOCK`일 때만 노출되니 신경 안 써도 됨 — `LoginPage.tsx` 참고)
+- [ ] 로그인 자격증명이 실서버 admin 계정으로 바뀌었는지 (mock 전용 데모 계정 `master@example.com`/`password` — 이메일 프리픽스 `viewer@`/`support@`/`admin@`/`master@`로 역할이 결정되는 규칙 포함 — 안내 문구는 `USE_MOCK`일 때만 노출되니 신경 안 써도 됨 — `LoginPage.tsx` 참고)
 - [ ] `npm run build` 그린
 
 ---
@@ -215,6 +217,6 @@ export default function XxxPage() {
 
 - [`../api-contract/README.md`](../api-contract/README.md) — 백엔드 계약 구성
 - [`../api-contract/admin-api.md`](../api-contract/admin-api.md) — 엔드포인트 상세
-- [`./screens.md`](./screens.md) — 기존 9개 화면이 각각 무엇을 하는지
+- [`./screens.md`](./screens.md) — 기존 화면들이 각각 무엇을 하는지 (화면 가이드)
 - [`../../CLAUDE.md`](../../CLAUDE.md) — 단일 소스 표 · 명령어 참조
 - [`../../README.md`](../../README.md) — 빠른 시작 · 폴더 구조

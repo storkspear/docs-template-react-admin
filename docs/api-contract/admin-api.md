@@ -2,9 +2,18 @@
 
 `template-spring`의 `core/core-admin-impl` 모듈이 제공하는 `/api/admin/*` 전체 계약이에요. 프론트 타입은 `src/lib/types.ts`, 클라이언트 함수는 `src/api/client.ts`, mock 구현은 `src/mocks/handlers.ts` + `fixtures.ts`에 있어요.
 
-**총 11개** — 데이터 엔드포인트 10개(아래 §1~§10) + `health` 프로브 전용 1개. `README.md`/`CLAUDE.md`가 "9개"라고 적어둔 건 `ops`(§10)와 `health`가 나중에 추가되기 전 기준이라 오래된 숫자예요 — 실제 계약은 여기 이 문서가 최신이에요.
+**범위(실측)**: 백엔드 매핑 **38개**(§1~§38 — 데이터 36 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)를 다뤄요. `src/api/client.ts`의 export 함수는 43개(= 백엔드 대응 37 + mock 전용 발송 6 — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§38은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
 
-> **인증 스코프**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 + `role=superadmin` JWT claim을 쓰고, `/api/admin/**`는 `hasRole('SUPERADMIN')`만 허용해요. 앱 내부 `role='admin'`(`ROLE_ADMIN`) 유저는 이 콘솔에 들어올 수 없고, 반대로 superadmin 토큰으로 `/api/apps/{slug}/**`에 접근하면 기존 `AppSlugVerificationFilter`가 403을 내려요 — 양방향 격리예요.
+> **인증 스코프 — RBAC 4티어**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 계정으로 콘솔 JWT 를 발급하는데, `role` claim 은 **RBAC 4티어 코드**(`viewer` < `support` < `admin` < `master` — 누적)이고, 역할에서 계산된 효과 권한(`PERM_*` 목록)이 **`permissions` claim** 으로 실려요. 백엔드 `SecurityConfig`가 `/api/admin/**` 리소스별로 `hasAuthority(PERM_*)`를 검사해요(예: 환불 POST 는 `PERM_PAYMENTS_WRITE`). 앱 유저 JWT 는 `permissions` claim 이 없어 `/api/admin/**`에서 403, 반대로 콘솔 JWT(`appSlug="admin"`)로 `/api/apps/{slug}/**`에 접근하면 `AppSlugVerificationFilter`가 403 — 양방향 격리예요. 프론트는 로그인 응답의 `admin.permissions`로 메뉴/버튼을 게이팅하지만(`src/lib/rbac.ts`), 최종 강제는 항상 백엔드예요.
+
+기본 grant(백엔드 V003 seed 기준, 매트릭스 편집으로 조정 가능 — §37~§38):
+
+| 티어 | 기본 권한 |
+|---|---|
+| `viewer` (1) | 앱·분석 조회 |
+| `support` (2) | + 사용자(마스킹)·파일(마스킹) 조회 · 발송 |
+| `admin` (3) | + 사용자 원본 · 결제(조회·환불) · 감사로그 |
+| `master` (4) | 전 도메인 + 계정관리(`PERM_ADMIN_MANAGE`, 코드 고정) |
 
 ---
 
@@ -24,7 +33,7 @@ interface ApiResponse<T> {
 }
 ```
 
-목록 엔드포인트(`users`, `audit-logs`)는 `data` 안에 `PageResponse<T>`가 또 한 겹 있어요.
+목록 엔드포인트(`users` · `audit-logs` · `payments` · `files` · `content`)는 `data` 안에 `PageResponse<T>`가 또 한 겹 있어요.
 
 ```ts
 interface PageResponse<T> {
@@ -40,22 +49,30 @@ interface PageResponse<T> {
 
 ---
 
-## [1] `POST /api/admin/auth/login`
+## 인증 · 계정
 
-관리자 로그인. **refresh token 없음** — access-token-only예요 (앱 유저 인증과 달리 회전/재발급 흐름이 없어요. 만료되면 재로그인).
+### [1] `POST /api/admin/auth/login`
+
+관리자 로그인. **refresh token 없음** — access-token-only예요 (앱 유저 인증과 달리 회전/재발급 흐름이 없어요. 만료되면 재로그인 — 콘솔 access token TTL 은 앱 유저의 15분과 별도로 기본 12시간이에요).
 
 - **Request body**: `{ email: string, password: string }`
 - **Response** (`AdminLogin`):
   ```ts
-  interface AdminAccount { userId: number; email: string; role: string; appSlug: string }
+  type AdminRole = 'viewer' | 'support' | 'admin' | 'master'
+  interface AdminAccount {
+    userId: number
+    email: string
+    role: AdminRole
+    appSlug: string
+    permissions: string[]   // 로그인 시 계산된 효과 권한(PERM_*) — 프론트 게이팅의 소스
+  }
   interface AdminLogin { accessToken: string; refreshToken?: string; admin: AdminAccount }
   ```
-  `refreshToken`은 타입상 optional이지만 백엔드가 실제로 채워주지 않아요(`AdminLoginResponse`에 필드 자체가 없음) — 항상 `undefined`라고 생각하면 돼요. `admin.appSlug`는 항상 `"admin"` 고정값(JWT의 `appSlug` claim이 non-blank를 요구해서 넣은 placeholder — 실제 앱 슬러그가 아니에요).
+  `refreshToken`은 타입상 optional인데 실서버는 필드 자체를 안 내려줘요(`AdminLoginResponse`에 없음) — 실서버 기준 항상 `undefined`예요(mock 은 placeholder 문자열을 채우지만 쓰이지 않아요). `admin.appSlug`는 항상 `"admin"` 고정값(JWT의 `appSlug` claim이 non-blank를 요구해서 넣은 placeholder — 실제 앱 슬러그가 아니에요).
 - **에러**: 자격증명 불일치 → `401 ADMIN_001`
+- **Mock 로그인 규칙**: 비밀번호는 `password` 고정, 이메일은 아무거나 — 이메일 **프리픽스**가 역할을 결정해요(`viewer*`→viewer, `support*`→support, `admin*`→admin, 그 외 전부 master). 로그인 폼 데모 자격증명은 `master@example.com` / `password`. 실 백엔드는 `admin_users.role`로 결정해요.
 
-> **Mock ↔ 실서버 필드 불일치 주의**: 현재 `src/mocks/handlers.ts`는 로그인 실패 시 `ATH_001`을 반환하는데(앱 유저 인증 코드를 복사한 흔적), 실제 백엔드는 `ADMIN_001`이에요. 에러 코드로 분기하는 화면 로직을 짠다면 **`ADMIN_001` 기준으로 작성**하고, mock 쪽 불일치는 알고 있는 상태로 두거나 고쳐서 맞추세요.
-
-## [2] `GET /api/admin/health`
+### [2] `GET /api/admin/health`
 
 **공개 엔드포인트** (인증 불필요). React `factory` CLI가 로컬 백엔드 연결 여부를 확인하는 용도로만 써요 — `src/api/client.ts`엔 대응 함수가 없고(데이터 계약이 아니라 인프라 프로브라서), `factory` 셸 스크립트가 직접 `curl -sf`로 호출해요.
 
@@ -63,9 +80,13 @@ interface PageResponse<T> {
 curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 ```
 
-`local start`가 이 요청 성공 여부로 `VITE_USE_MOCK` 값을 자동 결정해요 (§ "Mock ↔ 실서버 전환" 참고).
+`local start`가 이 요청 성공 여부로 `VITE_USE_MOCK` 값을 자동 결정해요 (§ "Mock ↔ 실서버 토글" 참고).
 
-## [3] `GET /api/admin/apps`
+---
+
+## 앱 · 대시보드
+
+### [3] `GET /api/admin/apps`
 
 등록된 전체 앱(슬러그) 요약.
 
@@ -75,7 +96,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
   ```
 - **데이터 소스**: 슬러그 열거 + 각 앱 스키마의 `users` count · `subscriptions`(ACTIVE) count.
 
-## [4] `GET /api/admin/dashboard/metrics`
+### [4] `GET /api/admin/dashboard/metrics`
 
 전사(cross-app) 합산 지표.
 
@@ -85,17 +106,35 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
   interface DashboardTotals {
     users: number; newUsers: number; dau: number; mau: number
     revenue: number; refunded: number; activeSubscriptions: number; failures24h: number
+    renewalFailures7d: number; webhookPending: number; webhookFailed: number
   }
-  interface PerSlugMetrics extends DashboardTotals { slug: string }  // 형태만 동일, 실제론 별도 인터페이스
+  interface PerSlugMetrics { slug: string; users: number; newUsers: number; dau: number; mau: number
+    revenue: number; refunded: number; activeSubscriptions: number; failures24h: number }
   interface DashboardMetrics {
     generatedAt: string; window: string
     totals: DashboardTotals; perSlug: PerSlugMetrics[]
   }
   ```
-- **데이터 소스**: 전 슬러그 fan-out(슬러그별 DataSource 순회) 후 메모리 합산 — users·신규(`created_at`)·DAU/MAU(§ DAU/MAU 정의)·매출/환불(`payment_history`)·활성구독·`failures24h`(`audit_logs WHERE result='FAILURE'` 24시간 이내 count).
+  `renewalFailures7d`/`webhookPending`/`webhookFailed`는 `ops`(§8)의 동명 필드를 **전 슬러그 fan-out 합산**한 값이에요 — 대시보드 "운영 신호" 카드가 이 3필드로 전사 신호 유무를 판단해요(전부 0이면 "정상").
+- **데이터 소스**: 전 슬러그 fan-out(슬러그별 DataSource 순회) 후 메모리 합산 — users·신규(`created_at`)·DAU/MAU(§ DAU/MAU 정의)·매출/환불(`payment_history`)·활성구독·`failures24h`(`audit_logs WHERE result='FAILURE'` 24시간 이내 count)·`renewalFailures7d`/`webhookPending`/`webhookFailed`(§8과 동일 쿼리의 fleet 합).
 - **에러**: 없음(전사 지표라 slug 파라미터가 없어서 `ADMIN_003` 대상이 아님).
 
-## [5] `GET /api/admin/apps/{slug}/metrics`
+### [5] `GET /api/admin/dashboard/top-customers`
+
+전앱(fleet) 결제 금액 TOP N — 대시보드 "고객 결제 TOP 5" 카드가 써요.
+
+- **Query**: `window`(기본 `30d`), `size`(기본 5)
+- **Response**: `TopCustomer[]`
+  ```ts
+  interface TopCustomer {
+    slug: string; userId: number; userEmail: string
+    totalAmount: number; paymentCount: number
+  }
+  ```
+- **데이터 소스**: 전 슬러그 fan-out 후 `payment_history`를 `(slug, userId)`로 그룹핑해 `window` 기간 내 합산·건수 집계, `totalAmount` 내림차순 `size`건. `gross`(§ gross/net 정의)와 동일하게 `PAID`/`REFUNDED`/`PARTIALLY_REFUNDED` 상태를 포함해요(환불 여부와 무관하게 한 번이라도 수금된 금액 기준).
+- **에러**: 없음(전사 지표라 slug 파라미터가 없어서 `ADMIN_003` 대상이 아님).
+
+### [6] `GET /api/admin/apps/{slug}/metrics`
 
 앱 하나의 지표(§4와 같은 지표 계산을 단일 스키마로).
 
@@ -109,47 +148,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
   ```
 - **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
 
-## [6] `GET /api/admin/apps/{slug}/users`
-
-앱 사용자 목록 검색 + 페이지네이션.
-
-- **Query**: `query`(이메일·표시이름·닉네임 ILIKE), `page`(기본 0), `size`(기본 20, **서버가 1~100으로 clamp** — 컨트롤러에서 `Math.min(Math.max(size, 1), 100)`)
-- **Response**: `PageResponse<AdminUser>`
-  ```ts
-  interface AdminUser {
-    id: number; email: string; displayName: string | null; nickname: string | null
-    role: string; isPremium: boolean; emailVerified: boolean
-    createdAt: string; deletedAt: string | null
-  }
-  ```
-- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
-
-## [7] `GET /api/admin/apps/{slug}/users/{userId}`
-
-사용자 상세 — 기기·구독·최근 결제 포함.
-
-- **Response** (`AdminUserDetail`):
-  ```ts
-  interface AdminUserFull extends AdminUser { updatedAt: string }
-  interface AdminDevice { id: number; platform: string; deviceName: string | null; lastSeenAt: string | null; createdAt: string }
-  interface AdminSubscription {
-    id: number; planId: number; status: string // ACTIVE | CANCELLED | EXPIRED
-    startedAt: string; expiresAt: string | null; cancelledAt: string | null; cancelReason: string | null
-  }
-  interface AdminPayment {
-    id: number; channel: string // PG | IAP
-    amount: number; currency: string
-    status: string // READY | PAID | FAILED | CANCELLED | VBANK_ISSUED
-    paidAt: string | null; refundedAt: string | null
-  }
-  interface AdminUserDetail {
-    user: AdminUserFull; devices: AdminDevice[]
-    subscriptions: AdminSubscription[]; recentPayments: AdminPayment[]  // 최근 10건
-  }
-  ```
-- **에러**: 사용자 없음 → `404 ADMIN_005`. 슬러그 자체가 없으면 → `404 ADMIN_003`(슬러그 해석이 먼저 일어남).
-
-## [8] `GET /api/admin/apps/{slug}/billing`
+### [7] `GET /api/admin/apps/{slug}/billing`
 
 빌링 요약(최근 기간).
 
@@ -167,38 +166,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 - **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`. `from`/`to` 파싱 실패(`DateTimeParseException`) → `400 ADMIN_004`.
 - **시맨틱**: § "gross/net 정의" 참고 — **환불 여부와 무관하게 한 번이라도 수금된 총합**이에요.
 
-## [9] `GET /api/admin/audit-logs`
-
-관리자·시스템 액션 로그.
-
-- **Query**: `slug`(생략 가능 — 생략 시 전 슬러그 fan-out 병합), `actorEmail`, `action`, `result`(`SUCCESS`|`FAILURE`), `from`, `to`, `page`, `size`
-- **Response**: `PageResponse<AuditLog>`
-  ```ts
-  type AuditResult = 'SUCCESS' | 'FAILURE'
-  interface AuditLog {
-    id: number; actorUserId: number | null; actorEmail: string | null
-    action: string; resourceType: string | null; resourceId: string | null
-    slug: string | null; result: AuditResult; ipAddress: string | null; occurredAt: string
-  }
-  ```
-- **데이터 소스**: `slug` 지정 시 단일 스키마 조회. 미지정 시 전 슬러그 fan-out 후 `occurred_at` 기준 병합 정렬 + **메모리 페이징**(설계 스펙의 "알려진 한계" — 솔로 규모(앱 수 ~10, 로그 수만 건)에선 문제없지만, 커지면 slug 필터를 유도하거나 커서 방식으로 바꿔야 해요).
-- **에러**: `from`/`to` 파싱 실패 → `400 ADMIN_004`.
-
-## [10] `GET /api/admin/analytics/{metric}`
-
-시계열 차트 데이터.
-
-- **Path**: `metric` = `dau` | `signups` | `revenue` (백엔드 `switch`문 — 그 외 값은 `400 ADMIN_002`)
-- **Query**: `slug`(**필수**), `from`, `to` (생략 시 최근 30일). **`interval`은 요청에 안 쓰여요** — 응답의 `interval` 필드는 항상 `"day"`로 고정 반환돼요(백엔드가 파라미터를 안 읽음). 프론트 클라이언트(`getAnalytics`)가 `interval` 옵션을 넘겨도 무시돼요.
-- **Response** (`TimeSeries`):
-  ```ts
-  interface TimeSeriesPoint { ts: string; value: number }
-  interface TimeSeries { metric: string; interval: string; points: TimeSeriesPoint[] }
-  ```
-- **⚠️ 알려진 문제 — `slug` 누락 시 500**: `slug`는 컨트롤러 파라미터에 `required=false`가 없어 Spring 기본값(`required=true`)이 적용돼요. 그런데 이 예외(`MissingServletRequestParameterException`)를 잡는 핸들러가 없어서 **깔끔한 400이 아니라 catch-all → `500 CMN_006`**으로 떨어져요. 프론트는 `useAppOptions()`의 `firstSlug`가 로드되기 전엔 쿼리를 `enabled: !!slug`로 막아서 이 경로를 실전에서 밟지 않지만, 직접 API를 호출할 땐 `slug` 누락에 주의하세요. (mock 핸들러는 이 케이스를 `400 VAL_001`로 방어하는데, 실제 백엔드 동작과 다르니 혼동하지 마세요.)
-- **데이터 소스**: `signups`=`users.created_at` 일별 집계, `revenue`=`payment_history.paid_at` 일별 집계(§ gross/net과 동일 시맨틱), `dau`=`user_activity_days`(§ DAU/MAU 정의).
-
-## [11] `GET /api/admin/apps/{slug}/ops`
+### [8] `GET /api/admin/apps/{slug}/ops`
 
 운영 신호 — 구독 갱신·웹훅 처리 지연·리텐션.
 
@@ -220,25 +188,423 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 
 ---
 
+## 사용자
+
+### [9] `GET /api/admin/apps/{slug}/users`
+
+앱 사용자 목록 검색 + 페이지네이션.
+
+- **Query**: `query`(이메일·표시이름·닉네임 ILIKE), `page`(기본 0), `size`(기본 20, **서버가 1~100으로 clamp**). 클라이언트(`getAppUsers`)가 넘길 수 있는 `email`/`name`/`nickname` 개별 필드 검색은 **mock 전용 확장**이에요 — 실서버 컨트롤러는 `query`/`page`/`size`만 읽어요.
+- **Response**: `PageResponse<AdminUser>`
+  ```ts
+  interface AdminUser {
+    id: number; email: string; displayName: string | null; nickname: string | null
+    role: string; isPremium: boolean; emailVerified: boolean
+    createdAt: string; deletedAt: string | null
+  }
+  ```
+- **PII 마스킹**: 세션에 `PERM_USERS_UNMASK`가 없으면(기본 grant 기준 support 티어) 이메일·닉네임 등 PII 가 마스킹돼 내려와요. 원본은 §11 "조회"로 단건 열람해요.
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
+
+### [10] `GET /api/admin/apps/{slug}/users/{userId}`
+
+사용자 상세 — 기기·구독·최근 결제 포함. §9와 같은 마스킹 규칙이 적용돼요.
+
+- **Response** (`AdminUserDetail`):
+  ```ts
+  interface AdminUserFull extends AdminUser { updatedAt: string }
+  interface AdminDevice { id: number; platform: string; deviceName: string | null; lastSeenAt: string | null; createdAt: string }
+  interface AdminSubscription {
+    id: number; planId: number; status: string // ACTIVE | CANCELLED | EXPIRED
+    startedAt: string; expiresAt: string | null; cancelledAt: string | null; cancelReason: string | null
+  }
+  interface AdminPayment {
+    id: number; channel: string // PG | IAP
+    amount: number; currency: string
+    status: string // READY | PAID | PARTIALLY_REFUNDED | REFUNDED | FAILED | CANCELLED | VBANK_ISSUED
+    paidAt: string | null; refundedAt: string | null
+  }
+  interface AdminUserDetail {
+    user: AdminUserFull; devices: AdminDevice[]
+    subscriptions: AdminSubscription[]; recentPayments: AdminPayment[]  // 최근 10건
+  }
+  ```
+- **에러**: 사용자 없음 → `404 ADMIN_005`. 슬러그 자체가 없으면 → `404 ADMIN_003`(슬러그 해석이 먼저 일어남).
+
+### [11] `GET /api/admin/apps/{slug}/users/{userId}/reveal`
+
+사용자 **원본 열람("조회")** — 마스킹 티어가 특정 사용자의 원본 PII 를 단건 확인해요. 클라이언트 함수는 `revealUser`.
+
+- **Response**: `AdminUserDetail`(§10과 동일 shape, 단 마스킹 없이 원본)
+- **감사**: 서버가 열람 사실을 `user_read_history`에 기록해요 — "누가 누구의 원본을 봤는지"가 남아요. 프론트는 드로어를 다시 열면 다시 마스킹 상태로 시작해요(열람 = 명시 액션).
+- **에러**: §10과 동일(`ADMIN_005`/`ADMIN_003`).
+
+---
+
+## 감사로그 · 분석
+
+### [12] `GET /api/admin/audit-logs`
+
+관리자·시스템 액션 로그.
+
+- **Query**: `slug`(생략 가능 — 생략 시 전 슬러그 fan-out 병합), `actorEmail`, `action`, `result`(`SUCCESS`|`FAILURE`), `from`, `to`, `page`, `size`
+- **Response**: `PageResponse<AuditLog>`
+  ```ts
+  type AuditResult = 'SUCCESS' | 'FAILURE'
+  interface AuditLog {
+    id: number; actorUserId: number | null; actorEmail: string | null
+    action: string; resourceType: string | null; resourceId: string | null
+    slug: string | null; result: AuditResult; ipAddress: string | null; occurredAt: string
+  }
+  ```
+- **데이터 소스**: `slug` 지정 시 단일 스키마 조회. 미지정 시 전 슬러그 fan-out 후 `occurred_at` 기준 병합 정렬 + **메모리 페이징**(설계 스펙의 "알려진 한계" — 솔로 규모(앱 수 ~10, 로그 수만 건)에선 문제없지만, 커지면 slug 필터를 유도하거나 커서 방식으로 바꿔야 해요).
+- **에러**: `from`/`to` 파싱 실패 → `400 ADMIN_004`.
+
+### [13] `GET /api/admin/analytics/{metric}`
+
+시계열 차트 데이터.
+
+- **Path**: `metric` = `dau` | `signups` | `revenue` (백엔드 `switch`문 — 그 외 값은 `400 ADMIN_002`)
+- **Query**: `slug`(**선택** — 생략 시 전앱 합산 시계열), `from`, `to` (생략 시 최근 30일). **`interval`은 요청에 안 쓰여요** — 응답의 `interval` 필드는 항상 `"day"`로 고정 반환돼요(백엔드가 파라미터를 안 읽음). 프론트 클라이언트(`getAnalytics`)가 `interval` 옵션을 넘겨도 무시돼요.
+- **Response** (`TimeSeries`):
+  ```ts
+  interface TimeSeriesPoint { ts: string; value: number }
+  interface TimeSeries { metric: string; interval: string; points: TimeSeriesPoint[] }
+  ```
+  응답 shape은 `slug` 유무와 무관하게 동일해요 — `slug` 생략 시 값만 전앱 합산으로 바뀌어요.
+- **데이터 소스**: `slug` 지정 시 해당 앱 스키마만 집계. 생략 시 전 슬러그 fan-out 후 **날짜별로 합산**(대시보드 "전체 매출 추이"·"전체 가입 추이" 차트가 이 경로를 써요). `signups`=`users.created_at` 일별 집계, `revenue`=`payment_history.paid_at` 일별 집계(§ gross/net과 동일 시맨틱), `dau`=`user_activity_days`(§ DAU/MAU 정의).
+- **과거 이력**: 한때 `slug`가 컨트롤러 파라미터상 필수(`required=true`)라 누락 시 `500 CMN_006`으로 떨어지는 문제가 있었어요(이 문서 과거 리비전 참고). 지금은 `slug`가 선택 파라미터로 바뀌면서 이 문제 자체가 해소됐어요 — 생략은 이제 정상 케이스(전앱 합산)예요.
+
+### [14] `GET /api/admin/analytics/events`
+
+제품 이벤트 요약 — 이벤트별 발생수·순사용자(발생수 내림차순). "이벤트 분석" 화면(`/analytics`)과 "전체 이벤트" 페이지(`/analytics/events`)가 써요. 클라이언트 함수는 `getEventSummary`.
+
+- **Query**: `slug`(선택), `from`, `to`
+- **Response**: `EventSummary[]`
+  ```ts
+  interface EventSummary { eventName: string; count: number; uniqueUsers: number }
+  ```
+  `uniqueUsers`는 **일별 순사용자의 기간 합**이에요 — 기간 전체의 절대 unique 가 아니에요(데이터 원천이 pre-aggregated daily 롤업 테이블 `analytics_daily`라서). 이벤트는 이름+카운트만 있고 콘텐츠 내용은 없어요(행동+메타데이터만 계측하는 개발 방침).
+
+### [15] `GET /api/admin/analytics/events/{eventName}`
+
+단일 이벤트의 일별 발생수 추이. 클라이언트 함수는 `getEventSeries`.
+
+- **Query**: `slug`(선택), `from`, `to`
+- **Response**: `TimeSeries`(§13과 동일 shape — `metric` 자리에 이벤트 이름)
+
+---
+
+## 결제
+
+### [16] `GET /api/admin/apps/{slug}/payments`
+
+앱 결제 내역 검색 + 페이지네이션 — "누가·언제·얼마"를 드릴다운으로 보는 화면(`/payments`)이 써요.
+
+- **Query**: `query`(사용자 이메일 ILIKE), `channel`(`PG`|`IAP`), `status`(`PAID`|`PARTIALLY_REFUNDED`|`REFUNDED`|`FAILED`|`READY`|`CANCELLED`), `type`(`SUBSCRIPTION`|`ONE_TIME`), `from`, `to`(ISO-8601, 생략 가능), `page`(기본 0), `size`(기본 20)
+- **Response**: `PageResponse<AdminPaymentListItem>`
+  ```ts
+  interface AdminPaymentListItem {
+    id: number; userId: number; userEmail: string; channel: string
+    amount: number; refundedAmount: number; currency: string; status: string
+    paymentType: 'SUBSCRIPTION' | 'ONE_TIME'
+    paidAt: string | null; refundedAt: string | null; externalId: string
+    refundReason?: string | null
+    periodStart?: string | null; periodEnd?: string | null // 구독 결제의 현재 기간(일할계산 근거)
+  }
+  ```
+- **`refundedAmount`**: 누적 환불액(`payment_history.refunded_amount`). `amount - refundedAmount`가 남은 환불 가능액이에요(부분환불 §17).
+- **`paymentType`**: 결제가 `subscriptions`/`subscription_renewals`를 참조하면 `SUBSCRIPTION`(구독 갱신/최초 결제), 아니면 `ONE_TIME`(부가 아이템 등 단건 구매) — 백엔드가 참조 관계로 유도해 내려주는 파생 필드예요(별도 저장 컬럼이 아님).
+- **`periodStart`/`periodEnd`**: 결제에 링크된 구독의 현재 기간(`subscriptions.started_at`/`expires_at`). 프론트 환불 모달의 **일할계산** 근거이고, 비구독/미링크는 `null`.
+- **상태 표시**: 프론트는 이 영어 enum 을 `lib/paymentStatus`로 한글 라벨(결제완료/부분환불/환불완료/실패/대기/취소) + 태그색으로 변환해 표시해요(백엔드는 영어 유지).
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`.
+
+### [17] `POST /api/admin/apps/{slug}/payments/{paymentId}/refund`
+
+결제 환불(전액/부분) — 결제 내역 화면(`/payments`)의 "환불" 버튼이 써요. **PG 채널 + `PAID`/`PARTIALLY_REFUNDED` 상태**인 결제가 대상이에요 — IAP(인앱결제)는 스토어(Google Play/App Store) 쪽 환불 절차를 따로 타기 때문에 이 엔드포인트로는 처리할 수 없어요.
+
+- **Request Body**: `{ amount?: number | null; reason: string }` — `amount` 생략(또는 `null`)이면 **남은 잔액 전액** 환불, 양수면 그 금액만 **부분환불**(잔액 이하). `reason` 필수(`@Positive amount`).
+- **Response**: 갱신된 `AdminPaymentListItem`(§16과 동일 shape) — 잔액을 다 환불하면 `status: 'REFUNDED'`, 일부만 남기면 `status: 'PARTIALLY_REFUNDED'`(잔액 남는 한 여러 번 환불 가능), `refundedAmount` 누적·`refundedAt` 갱신.
+- **일할계산(프론트)**: 구독 결제는 `periodStart`/`periodEnd`로 모달에서 잔여기간 비례 환불액(`amount × 잔여일 ÷ 전체일`)을 제안해요.
+- **에러**: PG 채널 아님 → `400 ADMIN_006`. 환불 불가 상태(이미 전액 환불·`PAID`/`PARTIALLY_REFUNDED` 아님) → `400 ADMIN_021`. 요청 금액이 남은 잔액 초과 → `400 ADMIN_020`(`amount≤0`은 그 전에 `@Positive` bean validation `422 CMN_*`). 결제 없음 → `404 ADMIN_007`. 슬러그 없음 → `404 ADMIN_003`.
+- **프론트 처리**: `PaymentsPage` 액션 컬럼은 `channel==='PG' && (status==='PAID' || status==='PARTIALLY_REFUNDED')`인 행만 버튼을 노출하고, 모달에서 결제금액/이미환불/잔액 + 금액 입력([전액] 프리셋)·사유를 받아요.
+
+### [18] `GET /api/admin/apps/{slug}/payments/{paymentId}/refunds`
+
+환불 이력(원장) — 환불 모달의 "환불 이력" 리스트가 써요. 다회 부분환불 시 건별 금액·사유·시각·처리자를 최신순으로 반환해요(`payment_history`의 누적값만으로는 건별 정보가 덮이기 때문).
+
+- **Response**: `AdminRefundHistoryItem[]`
+  ```ts
+  interface AdminRefundHistoryItem {
+    id: number; amount: number; reason: string | null
+    operator: string | null; refundedAt: string
+  }
+  ```
+- **데이터 소스**: `payment_refunds` 원장(환불 1건 = 1행). 매출 `refunded` 집계(§ gross/net)도 이 원장을 씁니다.
+
+---
+
+## 파일 (스토리지 모더레이션)
+
+### [19] `GET /api/admin/apps/{slug}/files`
+
+파일 화면(`/files`)이 쓰는 업로드 파일 목록 — **서버 페이지네이션**이에요(`PageResponse`, users/payments 와 동일 계약이라 `useAdminList`를 그대로 재사용). 정렬은 최신순.
+
+- **Query(실서버)**: `prefix`(접두사 매치), `kind`(`image`|`video`|`audio` — 타입 탭), `status`(`deleted`면 soft-delete 된 "삭제 대상"만, 없으면 정상+검역), `page`(기본 0), `size`
+- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `dateField`+`dateFrom`/`dateTo`(생성일/수정일 기간) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
+- **Response**: `AdminFileList` = `PageResponse<AdminFile>`
+  ```ts
+  type AdminFileStatus = 'ACTIVE' | 'QUARANTINED' | 'DELETED'
+  interface AdminFile {
+    key: string; size: number; lastModified: string; url: string; quarantined: boolean
+    createdAt?: string | null          // 업로드 시각(attachment_file.created_at)
+    status?: AdminFileStatus           // DELETED = soft-delete(30일 후 purge)
+    originalFilename?: string | null   // 원본 업로드 파일명 — key(UUID 기반)와 별개
+    contentType?: string | null        // MIME 타입
+    durationSec?: number | null        // 오디오/영상 재생 길이(초) — 실서버 스토리지 미구현, mock 제공
+    associatedType?: string | null     // polymorphic 연관 대상("USER"/"POST")
+    associatedId?: number | null
+    uploadedBy?: string | null         // 업로더 — PII, 마스킹 대상
+    uploadedIp?: string | null         // 업로드 시점 IP — PII, 마스킹 대상
+    userAgent?: string | null          // 업로드 기기 UA — PII, 마스킹 대상
+    deleteReason?: string | null       // soft-delete 사유
+    deletedAt?: string | null
+    purgeAt?: string | null            // 영구삭제 예정 시각(= deletedAt + 30일) — D-day 표시용
+  }
+  ```
+  `url`은 presigned GET URL(약 10분 유효) — 목록을 오래 띄워둔 채 미리보기/원본보기를 누르면 만료돼 있을 수 있어요(그럴 땐 재검색으로 새 URL을 받아요).
+- **PII 마스킹**: `PERM_FILES_UNMASK` 없는 세션엔 `uploadedBy`/`uploadedIp`/`userAgent`가 마스킹돼 내려와요. 원본은 §20 "조회"로 단건 열람.
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
+
+### [20] `GET /api/admin/apps/{slug}/files/{key}/reveal`
+
+파일 **원본 열람("조회")** — 마스킹 티어가 특정 파일의 업로더·IP·기기 원본을 확인해요. 클라이언트 함수는 `revealFile`. 서버가 열람을 `user_read_history`에 기록해요(§11과 같은 패턴).
+
+- **Response**: 원본 `AdminFile`
+- **에러**: 파일 없음 → `404 ADMIN_010`. 슬러그 없음 → `404 ADMIN_003`.
+
+### [21] `POST /api/admin/apps/{slug}/files/quarantine?key=`
+
+파일을 사용자에게 안 보이게 검역(숨김) 처리 — 오브젝트 키를 `quarantine/` 프리픽스로 옮기는 시맨틱이에요(별도 플래그가 아니라 저장 위치 자체가 바뀜). 갱신된 `AdminFile`(새 `key`, `quarantined: true`)을 반환해요.
+
+- **Query**: `key`(필수)
+- **Response**: 갱신된 `AdminFile`
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. 이미 검역된 파일을 다시 검역 시도 → `400 ADMIN_008`
+
+### [22] `POST /api/admin/apps/{slug}/files/restore?key=`
+
+검역된 파일을 원상 복구(`quarantine/` 프리픽스 제거). 갱신된 `AdminFile`(`quarantined: false`)을 반환해요.
+
+- **Query**: `key`(필수 — 검역된 상태의 현재 키, 즉 `quarantine/` 프리픽스가 붙은 값)
+- **Response**: 갱신된 `AdminFile`
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. 검역 상태가 아닌 파일을 복원 시도 → `400 ADMIN_009`
+
+### [23] `POST /api/admin/apps/{slug}/files/restore-deleted?key=`
+
+soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상으로 되돌려요(purge 예약 취소). 클라이언트 함수는 `restoreDeletedFile`.
+
+- **Query**: `key`(필수)
+- **Response**: 갱신된 `AdminFile`
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`.
+
+### [24] `DELETE /api/admin/apps/{slug}/files?key=`
+
+파일 삭제 — **즉시 영구삭제가 아니라 soft-delete**예요. 사유가 필수이고, 30일 뒤 purge 스케줄러(`AttachmentPurgeScheduler`)가 실제 오브젝트/row 를 지워요. 그 전엔 "삭제 대상" 탭에서 §23으로 복원할 수 있어요.
+
+- **Query**: `key`(필수, 삭제 대상 오브젝트 키)
+- **Request Body**: `{ reason: string }` — 삭제 사유 필수
+- **Response**: 갱신된 `AdminFile`(`status: 'DELETED'`, `deleteReason`/`deletedAt`/`purgeAt` 채워짐)
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`.
+
+---
+
+## 게시물 (콘텐츠 모더레이션)
+
+**공유(공개) 게시물** 콘솔 계약이에요 — 앱들의 공개 게시판(`posts`)을 전량 조회하고 숨김/삭제/복원해요. 프라이빗 기록은 이 도메인에 안 와요(각 앱 자체 테이블). 파일(§19~§24)과 동일한 상태 전이·soft-delete·purge 패턴이고, 상태는 `ACTIVE`/`HIDDEN`/`DELETED` 3종이에요.
+
+### [25] `GET /api/admin/apps/{slug}/content`
+
+게시물 목록(전 상태) + 필터. 클라이언트 함수는 `getAppContent`.
+
+- **Query**: `board`, `status`(`ACTIVE`|`HIDDEN`|`DELETED`), `page`(기본 0), `size`(기본 20)
+- **Response**: `PageResponse<AdminPost>`
+  ```ts
+  interface AdminPost {
+    id: number; authorUserId: number; board: string
+    title: string | null; body: string | null
+    status: string // ACTIVE | HIDDEN | DELETED
+    hiddenAt: string | null; hiddenReason: string | null
+    deletedAt: string | null; deleteReason: string | null
+    purgeAt: string | null; createdAt: string
+  }
+  ```
+  공개 게시물이라 작성자(`authorUserId`) 마스킹은 없어요(파일/유저의 PII reveal 패턴 불필요 — 백엔드 방침).
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
+
+### [26] `GET /api/admin/apps/{slug}/content/{id}`
+
+게시물 상세 — 본문 전체 + `properties` + 첨부 목록(모더레이션 판단용). 클라이언트 함수는 `getPostDetail`.
+
+- **Response** (`AdminPostDetail`): `AdminPost` 필드 + `properties: string | null` + `attachments: AdminPostAttachment[]`
+  ```ts
+  interface AdminPostAttachment {
+    id: number; originalFilename: string | null; contentType: string | null
+    sizeBytes: number | null; url: string | null   // presigned GET(~10분)
+  }
+  ```
+- **에러**: 게시물 없음 → `404 ADMIN_022`. 슬러그 없음 → `404 ADMIN_003`.
+
+### [27] `POST /api/admin/apps/{slug}/content/{id}/hide`
+
+게시물 숨김(`ACTIVE → HIDDEN`) — 사유 필수. **Body**: `{ reason: string }`. 갱신된 `AdminPost` 반환. 에러: `404 ADMIN_022`/`ADMIN_003`.
+
+### [28] `POST /api/admin/apps/{slug}/content/{id}/restore`
+
+숨김 해제(`HIDDEN → ACTIVE`, 재공개). 갱신된 `AdminPost` 반환. 에러: `404 ADMIN_022`/`ADMIN_003`.
+
+### [29] `POST /api/admin/apps/{slug}/content/{id}/restore-deleted`
+
+soft-delete 복원(`DELETED → ACTIVE`, purge 예약 취소). 갱신된 `AdminPost` 반환. 에러: `404 ADMIN_022`/`ADMIN_003`.
+
+### [30] `DELETE /api/admin/apps/{slug}/content/{id}`
+
+soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge 스케줄러가 실삭제. **Body**: `{ reason: string }`. 갱신된 `AdminPost` 반환. 에러: `404 ADMIN_022`/`ADMIN_003`.
+
+---
+
+## 관리자 계정 · 역할 (master 전용)
+
+`PERM_ADMIN_MANAGE`(기본 grant 로는 master 만) 필요 — 역할·권한 화면(`/roles`)이 써요. 편집은 **자기보다 낮은 티어만** 가능해요(상급자·동급·본인 편집 시도 → `403 ADMIN_017`).
+
+### [31] `GET /api/admin/admins`
+
+관리자 계정 목록. 비밀번호 해시는 내려오지 않아요.
+
+- **Response**: `AdminAccountRow[]`
+  ```ts
+  interface AdminAccountRow { id: number; email: string; displayName: string | null; role: AdminRole }
+  ```
+
+### [32] `POST /api/admin/admins`
+
+계정 생성. **Body**: `{ email, password, role, displayName? }`. 생성된 `AdminAccountRow` 반환.
+
+- **에러**: 이메일 중복 → `409 ADMIN_011`. 미상 역할 → `400 ADMIN_013`. 상급/동급 티어 생성 시도 → `403 ADMIN_017`.
+
+### [33] `PATCH /api/admin/admins/{id}`
+
+역할/표시이름 변경. **Body**: `{ role?, displayName? }`. 갱신된 `AdminAccountRow` 반환.
+
+- **에러**: 계정 없음 → `404 ADMIN_012`. 본인 변경 → `400 ADMIN_014`. 마지막 master 강등 → `400 ADMIN_015`. 미상 역할 → `400 ADMIN_013`. 상급/동급 → `403 ADMIN_017`.
+
+### [34] `DELETE /api/admin/admins/{id}`
+
+계정 삭제. 갱신된 목록(`AdminAccountRow[]`)을 반환해요.
+
+- **에러**: 계정 없음 → `404 ADMIN_012`. 본인 삭제 → `400 ADMIN_014`. 마지막 master 삭제 → `400 ADMIN_015`. 상급/동급 → `403 ADMIN_017`.
+
+### [35] `POST /api/admin/admins/{id}/password`
+
+타 계정 비밀번호 재설정. **Body**: `{ newPassword: string }`. 성공 시 빈 데이터.
+
+- **에러**: 계정 없음 → `404 ADMIN_012`. 상급/동급 → `403 ADMIN_017`.
+
+### [36] `POST /api/admin/me/password`
+
+**본인** 비밀번호 변경 — 모든 콘솔 계정이 쓸 수 있어요(`PERM_ADMIN_MANAGE` 불필요, 인증만). 설정 화면(`/settings`)이 써요.
+
+- **Body**: `{ currentPassword: string, newPassword: string }`
+- **에러**: 현재 비밀번호 불일치 → `400 ADMIN_016`
+
+### [37] `GET /api/admin/roles/permissions`
+
+역할×권한 매트릭스 조회.
+
+- **Response** (`RolePermissionMatrix`):
+  ```ts
+  type PermCategory = 'FIXED' | 'DOMAIN' | 'GOVERNANCE'
+  interface RolePermCol { key: string; category: PermCategory }
+  interface RolePermCell { permission: string; granted: boolean; editable: boolean }
+  interface RolePermRow { role: AdminRole; tier: number; cells: RolePermCell[] }
+  interface RolePermissionMatrix { permissions: RolePermCol[]; roles: RolePermRow[] }
+  ```
+  `editable`은 호출자 기준이에요 — `FIXED` 권한(대시보드 등 코드 고정)과 상급/동급 티어 행은 토글 불가.
+
+### [38] `PUT /api/admin/roles/permissions`
+
+매트릭스 편집 — 역할별 **목표 집합**을 통째로 저장해요(diff 아님). 서버(`PermissionCatalog`)가 계층·의존(`WRITE`/`UNMASK` ⇒ 해당 `READ`)·editable 범위를 재검증해요.
+
+- **Body**: `{ roles: { role: AdminRole; permissions: string[] }[] }`
+- **Response**: 갱신된 `RolePermissionMatrix`
+- **에러**: 상급/동급 티어 편집 → `403 ADMIN_017`. 편집 불가 권한 → `400 ADMIN_018`. READ 없이 WRITE/UNMASK 부여 → `400 ADMIN_019`.
+
+---
+
+## 발송(메시징) — ⚠ mock 전용 (백엔드 미구현)
+
+발송 화면(`/send`)은 아래 6개 엔드포인트에 **실제로 배선**돼 있지만, `template-spring`엔 아직 대응 컨트롤러가 없어요 — **mock(MSW)에서만 동작**하고, 실서버 모드에선 404가 나요. 백엔드 구현이 따라오면 이 절이 §39+ 로 승격될 예정이에요. 그때까지는 계약(경로·DTO)이 mock 쪽 단독 정의라는 걸 감안하고 보세요.
+
+| # | 엔드포인트 | 클라이언트 함수 | 용도 |
+|---|---|---|---|
+| M1 | `GET /api/admin/apps/{slug}/messages/segments` | `getSendSegments` | 세그먼트 기본 규모(채널 교집합 전) — 대상 카드 |
+| M2 | `GET /api/admin/apps/{slug}/messages/preview?channel&segment&userRef` | `getSendPreview` | 채널×대상 유효 수신자 수 미리보기(발송 없음) |
+| M3 | `GET /api/admin/apps/{slug}/messages/recipients?channel&segment&page&size` | `getSendRecipients` | 발송 전 실제 수신자 목록 미리보기 |
+| M4 | `POST /api/admin/apps/{slug}/messages` | `sendMessage` | 발송 실행 |
+| M5 | `GET /api/admin/apps/{slug}/messages?channel&from&to&page&size` | `getMessageHistory` | 발송 이력(`message_send_history` 상당) |
+| M6 | `GET /api/admin/apps/{slug}/messages/{messageId}/recipients?page&size` | `getSentRecipients` | 발송된 건의 수신자별 전달 상태 |
+
+핵심 타입(`src/lib/types.ts`):
+
+```ts
+type SendChannel = 'SMS' | 'EMAIL' | 'PUSH'
+type SendSegmentKey = 'all' | 'premium' | 'free' | 'active' | 'new' | 'user' | 'topic'
+type SendTargetType = 'USER' | 'SEGMENT' | 'BROADCAST' | 'TOPIC'
+interface SendSegment { key: SendSegmentKey; label: string; count: number }
+interface SendPreview { channel: SendChannel; supported: boolean; recipientCount: number }
+interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount: number }
+```
+
+- `SendPreview.supported: false`는 그 앱이 해당 채널을 못 쓰는 경우예요(예: SMS 는 phone-auth 앱만).
+- `sendMessage` Body: `{ channel, targetType, targetRef?, subject?, text }` — SMS 는 `subject: null`, `topic`은 푸시 전용(`TOPIC`+토픽명).
+
+---
+
 ## 에러 코드
 
-### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`)
+### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_022`
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
 | `ADMIN_001` | 401 | `INVALID_CREDENTIALS` | 이메일 또는 비밀번호가 올바르지 않아요 (로그인 실패) |
 | `ADMIN_002` | 400 | `UNSUPPORTED_METRIC` | `analytics/{metric}`의 `metric`이 `dau`/`signups`/`revenue` 중 하나가 아님 |
-| `ADMIN_003` | 404 | `UNKNOWN_SLUG` | 슬러그를 찾을 수 없음 — users/metrics/billing/audit/dashboard/analytics 등 슬러그를 받는 **모든** admin 엔드포인트 공통 |
+| `ADMIN_003` | 404 | `UNKNOWN_SLUG` | 슬러그를 찾을 수 없음 — 슬러그를 받는 **모든** admin 엔드포인트 공통 |
 | `ADMIN_004` | 400 | `INVALID_DATE_RANGE` | `from`/`to`가 ISO-8601 형식이 아님 (billing/audit-logs/analytics) |
-| `ADMIN_005` | 404 | `USER_NOT_FOUND` | 사용자 상세 조회 시 해당 `userId` 없음 |
+| `ADMIN_005` | 404 | `USER_NOT_FOUND` | 사용자 상세/조회 시 해당 `userId` 없음 |
+| `ADMIN_006` | 400 | `PG_REFUND_ONLY` | 환불 대상 결제가 PG 채널이 아님(IAP 는 스토어 환불) |
+| `ADMIN_007` | 404 | `PAYMENT_NOT_FOUND` | 환불 대상 `paymentId`에 해당하는 결제가 없음 |
+| `ADMIN_008` | 400 | `FILE_ALREADY_QUARANTINED` | 이미 검역된 파일을 다시 검역 시도 |
+| `ADMIN_009` | 400 | `FILE_NOT_QUARANTINED` | 검역되지 않은 파일을 복원 시도 |
+| `ADMIN_010` | 404 | `FILE_NOT_FOUND` | 검역/복원/삭제/열람 대상 파일 없음 |
+| `ADMIN_011` | 409 | `ADMIN_EMAIL_EXISTS` | 관리자 계정 생성 시 이미 사용 중인 이메일 |
+| `ADMIN_012` | 404 | `ADMIN_ACCOUNT_NOT_FOUND` | `/admins/{id}` 대상 관리자 계정 없음 |
+| `ADMIN_013` | 400 | `ADMIN_INVALID_ROLE` | 4티어 코드(viewer/support/admin/master)가 아닌 역할 입력 |
+| `ADMIN_014` | 400 | `ADMIN_CANNOT_MODIFY_SELF` | 본인 계정 삭제·역할 변경 시도 |
+| `ADMIN_015` | 400 | `ADMIN_LAST_MASTER` | 마지막 master 계정 삭제·강등 시도 |
+| `ADMIN_016` | 400 | `ADMIN_WRONG_PASSWORD` | 본인 비밀번호 변경 시 현재 비밀번호 불일치 |
+| `ADMIN_017` | 403 | `ADMIN_ROLE_EDIT_FORBIDDEN` | 상급자·본인 티어의 권한/계정 편집 시도 |
+| `ADMIN_018` | 400 | `ADMIN_PERM_NOT_EDITABLE` | 편집 불가 권한(`FIXED` 등) 편집 시도 |
+| `ADMIN_019` | 400 | `ADMIN_PERM_DEPENDENCY` | WRITE/UNMASK 권한을 해당 READ 권한 없이 부여 시도 |
+| `ADMIN_020` | 400 | `ADMIN_REFUND_AMOUNT_INVALID` | 환불 요청 금액이 남은 잔액을 초과(부분환불 §17) |
+| `ADMIN_021` | 400 | `ADMIN_REFUND_NOT_ALLOWED` | 환불 불가 상태(이미 전액 환불됐거나 `PAID`/`PARTIALLY_REFUNDED` 아님) |
+| `ADMIN_022` | 404 | `ADMIN_CONTENT_NOT_FOUND` | `/content/{id}` 모더레이션 대상 게시물 없음 |
 
 ### 공통 (`CommonError`, `common-web`)
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
 | `CMN_004` | 401 | `UNAUTHORIZED` | 인증이 필요합니다 (토큰 없음/무효 — admin 토큰은 refresh가 없으니 만료되면 재로그인) |
-| `CMN_005` | 403 | `FORBIDDEN` | 권한이 없습니다 (예: 앱 `role='admin'` 유저가 `/api/admin/**` 접근 시도, 또는 superadmin 토큰으로 `/api/apps/{slug}/**` 접근 시도) |
-| `CMN_006` | 500 | (서버 내부 오류) | catch-all — 위 "analytics `slug` 누락" 같은 처리 안 된 예외가 여기로 떨어져요 |
+| `CMN_005` | 403 | `FORBIDDEN` | 권한이 없습니다 (필요한 `PERM_*` 없음, 앱 유저 JWT 로 `/api/admin/**` 접근, 콘솔 JWT 로 `/api/apps/{slug}/**` 접근) |
+| `CMN_006` | 500 | (서버 내부 오류) | catch-all — 처리 안 된 예외가 여기로 떨어져요 |
 
 프론트 쪽 매핑은 `src/api/client.ts`의 `ApiRequestError.code`로 노출돼요(`body.error.code`). 코드별 분기 UI가 필요하면 이 값을 보고 처리하세요 — 현재 화면들은 대부분 `isError`만 보고 공통 `<Alert type="error">`로 뭉뚱그려 처리해요 (`docs/guide/screens.md` 참고).
 
@@ -248,11 +614,12 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 
 ### gross / net 정의 (빌링)
 
-`payment_history.status`는 결제 엔티티의 `markRefunded()`가 환불 시 `PAID` → `REFUNDED`로 **덮어써요** (별도 플래그가 아니라 상태 자체가 뒤집힘). 그래서:
+`payment_history.status`는 환불 시 `PAID` → `REFUNDED`(전액) 또는 `PARTIALLY_REFUNDED`(부분, §17)로 **덮어써요** (별도 플래그가 아니라 상태 자체가 뒤집힘). 그래서:
 
-- **`gross`(총매출) = `status IN ('PAID', 'REFUNDED')`인 건의 합** — 환불 여부와 무관하게 "한 번이라도 수금된 금액"의 총합이에요. `status='PAID'`로만 집계하면 환불된 결제가 gross에서도 빠져버리고, 이어서 `net = gross - refunded`로 또 한 번 차감돼 **이중차감** 버그가 생겨요 — 이 버그를 피하려고 `REFUNDED`도 gross에 포함시켜요.
+- **`gross`(총매출) = `status IN ('PAID', 'REFUNDED', 'PARTIALLY_REFUNDED')`인 건의 `amount` 합** — 환불 여부와 무관하게 "한 번이라도 수금된 금액"의 총합이에요. `status='PAID'`로만 집계하면 환불된 결제가 gross에서도 빠져버리고, 이어서 `net = gross - refunded`로 또 한 번 차감돼 **이중차감** 버그가 생겨요. 부분환불 건도 전액이 한 번 수금됐으므로 gross엔 전액이 들어가요.
+- **`refunded` = `payment_refunds` 원장(§18)에서 건별 `refunded_at`이 기간에 속하는 `amount` 합** — 부분환불은 `refunded_amount < amount`. `payment_history.amount`를 합하면 부분환불을 전액환불로 과다 집계하고, 누적 `refunded_amount`는 `refunded_at`이 마지막 값이라 다회 환불의 기간 귀속이 틀어져서, 반드시 원장 건별로 집계해요.
 - **`net`(순매출) = `gross - refunded`**
-- 대시보드(§4)·앱 metrics(§5)·billing(§8)·revenue 시계열(§10) 전부 이 시맨틱을 따라요.
+- 대시보드(§4)·앱 metrics(§6)·billing(§7)·revenue 시계열(§13) 전부 이 시맨틱을 따라요.
 
 ### DAU / MAU — 실데이터 기반 (`user_activity_days`)
 
@@ -265,12 +632,12 @@ DAU/MAU는 더미가 아니라 **진짜 활동 기록**이에요. 백엔드에 �
 
 ### 리텐션 D1/D7 코호트
 
-`ops`(§11)의 `retentionD1`/`retentionD7`는 코호트 리텐션 %예요.
+`ops`(§8)의 `retentionD1`/`retentionD7`는 코호트 리텐션 %예요.
 
 - **코호트 정의**: 가입일 기준 상대일 — D1 코호트는 가입일이 `[-15, -2]`일 구간, D7 코호트는 `[-21, -8]`일 구간(오늘 기준). 즉 "정확히 지금으로부터 N일 전 가입자"가 아니라, "가입 후 N일째가 이미 지난" 유저들의 집합이에요.
 - **생존 판정**: 코호트에 속한 유저가 `user_activity_days`에 `가입일 + N일` 행이 있으면 "생존"으로 카운트.
 - **값**: 코호트 크기 대비 생존 비율 %, 소수 1자리. **코호트 크기가 0이면 `null`**(정상 케이스 — 신설 지표라 아직 데이터가 안 쌓인 상태를 뜻해요. `retentionD1`이 `null`이면 `retentionD7`도 항상 `null`이에요 — D7은 D1보다 더 늦게 채워지니까요).
-- 화면(`AnalyticsPage`)은 `null`을 "— (데이터 수집 중)"으로 표시해요 — 에러가 아니라 정상 대기 상태로 다뤄야 해요.
+- 화면(앱 상세 개요탭의 `OpsSignalCards`)은 `null`을 "— (데이터 수집 중)"으로 표시해요 — 에러가 아니라 정상 대기 상태로 다뤄야 해요.
 
 ### Mock ↔ 실서버 토글
 
@@ -279,7 +646,7 @@ DAU/MAU는 더미가 아니라 **진짜 활동 기록**이에요. 백엔드에 �
 - `true`(기본): `src/mocks/browser.ts`의 MSW 서비스워커가 브라우저에서 `/api/admin/*`를 가로채요. `BASE_URL`도 강제로 빈 문자열이라 항상 same-origin으로 요청이 나가고 MSW가 반드시 매치해요.
 - `false`: MSW 미기동, `VITE_API_BASE`(또는 Vite dev proxy의 `VITE_PROXY_TARGET`)로 실제 백엔드에 요청해요.
 - `./factory local start`는 `GET /api/admin/health`를 직접 curl로 프로브해서 이 값을 **자동** 결정해요 — 백엔드가 떠 있으면 실서버 모드, 없으면 mock 모드로 폴백하고 안내 메시지를 출력해요.
-- 두 모드가 스키마 드리프트 없이 동일하게 동작하는 건 `src/lib/types.ts`를 mock/실서버가 공유하기 때문이에요. 다만 위에서 짚은 에러 코드 불일치(`ATH_001` vs `ADMIN_001`, analytics `slug` 누락 시 mock=400/실서버=500)처럼 **응답 shape은 같아도 예외 경로의 세부 동작은 다를 수 있어요** — 에러 케이스는 mock만 보고 100% 신뢰하지 마세요.
+- 두 모드가 스키마 드리프트 없이 동일하게 동작하는 건 `src/lib/types.ts`를 mock/실서버가 공유하기 때문이에요. 다만 **예외 경로의 세부 동작은 다를 수 있어요** — 예를 들어 현재 mock 은 `metrics`/`billing`/`ops`의 슬러그 404에 `APP_404`, 사용자 404에 `USR_404`라는 자체 코드를 쓰는데, 실서버는 각각 `ADMIN_003`/`ADMIN_005`예요. 발송(§M1~§M6)은 아예 실서버에 없고요. 에러 코드로 분기하는 로직은 **실서버 코드(`ADMIN_*`) 기준으로 작성**하고, 에러 케이스는 mock만 보고 100% 신뢰하지 마세요.
 
 ---
 
@@ -287,5 +654,5 @@ DAU/MAU는 더미가 아니라 **진짜 활동 기록**이에요. 백엔드에 �
 
 - [`README.md`](./README.md) — 계약 문서 전체 구성 · 쌍 운영 규칙
 - [`../guide/screens.md`](../guide/screens.md) — 화면별 엔드포인트 사용처
-- [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring)
+- [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring) — 백엔드 쪽 상세는 `docs/api-and-functional/admin-console.md`(§3 카탈로그가 이 문서와 같은 번호)
 - 설계 스펙 원문: `template-spring` 저장소의 `docs/superpowers/specs/2026-07-06-admin-module-design.md`

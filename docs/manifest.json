@@ -43,6 +43,21 @@
           "desc": "factory CLI 흐름 · 브랜딩 · 메뉴 구성 · Mock→실서버 전환"
         }
       ]
+    },
+    {
+      "name": "Reference",
+      "files": [
+        {
+          "path": "reference/environment.md",
+          "title": "Environment",
+          "desc": "프레임워크 · 라이브러리 버전표 (정본 package.json)"
+        },
+        {
+          "path": "reference/environment-ui.md",
+          "title": "Environment UI",
+          "desc": "기술 스택 한눈 다이어그램 (아이콘)"
+        }
+      ]
     }
   ]
 }

@@ -182,3 +182,52 @@ DIAGRAMS['PROD'] = `
     <span class="legend-item obs">Observability</span>
   </div>
 </div>`;
+
+DIAGRAMS['TECH_STACK'] = `
+<div class="aws-diagram" id="tech-stack-diagram">
+  <div class="aws-diagram-title">기술 스택 한눈 보기 — template-react-admin</div>
+
+  <div class="stack-row">
+    <div class="stack-label" style="background:#0f172a">코어</div>
+    <div class="stack-nodes">
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#0f172a"><img src="https://cdn.simpleicons.org/react/61DAFB" width="18" height="18" alt="React"></div><div class="aws-name sm">React 19.2</div><div class="aws-sub">함수형 · Suspense</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#f8fafc"><img src="https://cdn.simpleicons.org/typescript/3178C6" width="18" height="18" alt="TypeScript"></div><div class="aws-name sm">TypeScript 6.0</div><div class="aws-sub">strict 모드</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#f8fafc"><img src="https://cdn.simpleicons.org/vite/646CFF" width="18" height="18" alt="Vite"></div><div class="aws-name sm">Vite 8.1</div><div class="aws-sub">빌드 · dev 서버 :5173</div></div>
+    </div>
+  </div>
+
+  <div class="stack-row">
+    <div class="stack-label" style="background:#1e40af">UI</div>
+    <div class="stack-nodes">
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#f8fafc"><img src="https://cdn.simpleicons.org/antdesign/0170FE" width="18" height="18" alt="Ant Design"></div><div class="aws-name sm">Ant Design 5.22</div><div class="aws-sub">ConfigProvider 토큰 (theme.ts)</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#1e3a8a"><span class="stack-chip">AG</span></div><div class="aws-name sm">ag-grid 36</div><div class="aws-sub">서버 페이지네이션 그리드</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#0f172a"><img src="https://cdn.simpleicons.org/tailwindcss/06B6D4" width="18" height="18" alt="Tailwind"></div><div class="aws-name sm">Tailwind 3.4</div><div class="aws-sub">유틸리티 CSS</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#334155"><span class="stack-chip">Ch</span></div><div class="aws-name sm">자체 차트</div><div class="aws-sub">MiniBar · MiniPie</div></div>
+    </div>
+  </div>
+
+  <div class="stack-row">
+    <div class="stack-label" style="background:#166534">데이터</div>
+    <div class="stack-nodes">
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#0f172a"><img src="https://cdn.simpleicons.org/reactquery/FF4154" width="18" height="18" alt="TanStack Query"></div><div class="aws-name sm">TanStack Query 5</div><div class="aws-sub">서버 상태 · useAdminList</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#f8fafc"><img src="https://cdn.simpleicons.org/reactrouter/CA4245" width="18" height="18" alt="React Router"></div><div class="aws-name sm">react-router 7</div><div class="aws-sub">NAV_ITEMS 단일 소스</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#ea580c"><span class="stack-chip">MSW</span></div><div class="aws-name sm">MSW 2.7</div><div class="aws-sub">mock 전 화면 · VITE_USE_MOCK 토글</div></div>
+    </div>
+  </div>
+
+  <div class="stack-row">
+    <div class="stack-label" style="background:#475569">품질</div>
+    <div class="stack-nodes">
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#334155"><span class="stack-chip">OX</span></div><div class="aws-name sm">oxlint</div><div class="aws-sub">린트</div></div>
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#334155"><span class="stack-chip">tsc</span></div><div class="aws-name sm">tsc -b</div><div class="aws-sub">타입 게이트 (npm run build)</div></div>
+    </div>
+  </div>
+
+  <div class="stack-arrow">▼&nbsp;&nbsp;<code>/api/admin/*</code> 계약 · RBAC 4티어 (viewer/support/admin/master)&nbsp;&nbsp;▼</div>
+  <div class="stack-row">
+    <div class="stack-label" style="background:#166534">백엔드 짝</div>
+    <div class="stack-nodes">
+      <div class="aws-node mini"><div class="aws-icon sm" style="background:#f1f8f4"><img src="https://cdn.simpleicons.org/springboot/6DB33F" width="18" height="18" alt="Spring Boot"></div><div class="aws-name sm">template-spring</div><div class="aws-sub">admin 모듈 · PERM_* 권한</div></div>
+    </div>
+  </div>
+</div>`;

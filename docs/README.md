@@ -22,11 +22,11 @@
 `template-spring`과의 1:1 계약이에요. 응답 스키마·에러 코드가 어긋나면 mock과 실서버 양쪽이 동시에 안 맞아요.
 
 - [`api-contract/README.md`](./api-contract/README.md) — 계약 문서 구성 · 쌍 운영 규칙 · 진실의 출처
-- [`api-contract/admin-api.md`](./api-contract/admin-api.md) — 엔드포인트 11개 전체: 요청 파라미터 · 응답 shape · 에러 코드(`ADMIN_001~005`, `CMN_004`/`CMN_005`) · 시맨틱 노트(gross/net, DAU/MAU, 리텐션 D1/D7, mock↔실서버 토글)
+- [`api-contract/admin-api.md`](./api-contract/admin-api.md) — 엔드포인트 전체(백엔드 매핑 전부 + mock 전용 발송 — 정확한 개수·목록은 그 문서 서두의 실측 기준): 요청 파라미터 · 응답 shape · 에러 코드(`ADMIN_001`~`ADMIN_022`, `CMN_004`/`CMN_005`) · 시맨틱 노트(gross/net, DAU/MAU, 리텐션 D1/D7, mock↔실서버 토글)
 
 ## 화면 가이드 ([`guide/screens.md`](./guide/screens.md))
 
-9개 화면(대시보드~컴포넌트) 각각이 무엇을 보여주고 어떤 API를 쓰는지, 모바일에서 어떻게 달라지는지(무한스크롤·필터 모달) 정리했어요.
+전 화면(대시보드~컴포넌트 메뉴 12개 + 상세 라우트) 각각이 무엇을 보여주고 어떤 API를 쓰는지, 모바일에서 어떻게 달라지는지(무한스크롤·필터 모달) 정리했어요.
 
 - [`guide/screens.md`](./guide/screens.md)
 
@@ -35,6 +35,13 @@
 "Use this template" 직후부터 실서버 연결까지, `CLAUDE.md` §8 체크리스트를 단계별 상세 + 코드 예시로 풀어썼어요.
 
 - [`guide/derived-repo.md`](./guide/derived-repo.md) — factory CLI 흐름 · 브랜딩(appConfig/palette/favicon) · 메뉴 구성(nav.tsx) · Mock→실서버 전환 · 화면 추가 패턴(그리드형/폼형)
+
+## 레퍼런스 ([`reference/`](./reference/))
+
+기술 스택 인벤토리예요. 루트 README 의 스택 표를 docs 뷰어에서도 볼 수 있게 버전표와 다이어그램으로 정리했어요.
+
+- [`reference/environment.md`](./reference/environment.md) — 프레임워크·라이브러리 버전표 (정본은 `package.json`)
+- [`reference/environment-ui.md`](./reference/environment-ui.md) — 기술 스택 한눈 다이어그램 (docs 뷰어에서 렌더링)
 
 ---
 
@@ -45,8 +52,11 @@ docs/
 ├── README.md                  # 이 파일 — 목차
 ├── api-contract/
 │   ├── README.md               # 계약 구성 · 쌍 운영 규칙
-│   └── admin-api.md            # 엔드포인트 11개 상세 계약
-└── guide/
-    ├── screens.md               # 화면 9개 요약
-    └── derived-repo.md          # 파생 레포 체크리스트 심화판
+│   └── admin-api.md            # 엔드포인트 전체 상세 계약
+├── guide/
+│   ├── screens.md               # 화면 가이드 (전 화면)
+│   └── derived-repo.md          # 파생 레포 체크리스트 심화판
+└── reference/
+    ├── environment.md            # 기술 스택 버전표
+    └── environment-ui.md         # 기술 스택 다이어그램
 ```
