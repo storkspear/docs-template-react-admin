@@ -25,7 +25,7 @@
         {
           "path": "api-contract/admin-api.md",
           "title": "Admin API",
-          "desc": "엔드포인트 11개 전체 — 요청 파라미터 · 응답 shape · 에러 코드 · 시맨틱 노트"
+          "desc": "엔드포인트 전체 상세 계약 — spring 카탈로그 정합 38섹션 · RBAC · 에러 코드"
         }
       ]
     },
@@ -35,7 +35,7 @@
         {
           "path": "guide/screens.md",
           "title": "화면 가이드",
-          "desc": "화면 9개 각각의 API · 모바일 대응 정리"
+          "desc": "화면별 API · RBAC · 모바일 대응 정리 (메뉴 12 + 상세 라우트)"
         },
         {
           "path": "guide/derived-repo.md",
