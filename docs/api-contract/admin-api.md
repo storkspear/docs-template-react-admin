@@ -2,7 +2,7 @@
 
 `template-spring`의 `core/core-admin-impl` 모듈이 제공하는 `/api/admin/*` 전체 계약이에요. 프론트 타입은 `src/lib/types.ts`, 클라이언트 함수는 `src/api/client.ts`, mock 구현은 `src/mocks/handlers.ts` + `fixtures.ts`에 있어요.
 
-**범위(실측)**: 백엔드 매핑 **38개**(§1~§38 — 데이터 36 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)를 다뤄요. `src/api/client.ts`의 export 함수는 43개(= 백엔드 대응 37 + mock 전용 발송 6 — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§38은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
+**범위(실측)**: 백엔드 매핑 **41개**(§1~§41 — 데이터 39 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)를 다뤄요. `src/api/client.ts`의 export 함수는 48개(= 백엔드 대응 40 + mock 전용 발송 6 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§38은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
 
 > **인증 스코프 — RBAC 4티어**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 계정으로 콘솔 JWT 를 발급하는데, `role` claim 은 **RBAC 4티어 코드**(`viewer` < `support` < `admin` < `master` — 누적)이고, 역할에서 계산된 효과 권한(`PERM_*` 목록)이 **`permissions` claim** 으로 실려요. 백엔드 `SecurityConfig`가 `/api/admin/**` 리소스별로 `hasAuthority(PERM_*)`를 검사해요(예: 환불 POST 는 `PERM_PAYMENTS_WRITE`). 앱 유저 JWT 는 `permissions` claim 이 없어 `/api/admin/**`에서 403, 반대로 콘솔 JWT(`appSlug="admin"`)로 `/api/apps/{slug}/**`에 접근하면 `AppSlugVerificationFilter`가 403 — 양방향 격리예요. 프론트는 로그인 응답의 `admin.permissions`로 메뉴/버튼을 게이팅하지만(`src/lib/rbac.ts`), 최종 강제는 항상 백엔드예요.
 
@@ -351,7 +351,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 파일 화면(`/files`)이 쓰는 업로드 파일 목록 — **서버 페이지네이션**이에요(`PageResponse`, users/payments 와 동일 계약이라 `useAdminList`를 그대로 재사용). 정렬은 최신순.
 
 - **Query(실서버)**: `prefix`(접두사 매치), `kind`(`image`|`video`|`audio` — 타입 탭), `status`(`deleted`면 soft-delete 된 "삭제 대상"만, 없으면 정상+검역), `page`(기본 0), `size`
-- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `dateField`+`dateFrom`/`dateTo`(생성일/수정일 기간) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
+- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `dateField`+`dateFrom`/`dateTo`(생성일/수정일 기간), `source`(`user`|`post`|`other` — 출처(연관 대상) 필터: 사용자/게시물/그 외·미연관), `assocId`(출처 드릴다운 — 목록의 출처 태그 클릭 시 `source`와 함께 특정 연관 id 로 좁힘) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
 - **Response**: `AdminFileList` = `PageResponse<AdminFile>`
   ```ts
   type AdminFileStatus = 'ACTIVE' | 'QUARANTINED' | 'DELETED'
@@ -420,7 +420,7 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
 
 ## 게시물 (콘텐츠 모더레이션)
 
-**공유(공개) 게시물** 콘솔 계약이에요 — 앱들의 공개 게시판(`posts`)을 전량 조회하고 숨김/삭제/복원해요. 프라이빗 기록은 이 도메인에 안 와요(각 앱 자체 테이블). 파일(§19~§24)과 동일한 상태 전이·soft-delete·purge 패턴이고, 상태는 `ACTIVE`/`HIDDEN`/`DELETED` 3종이에요.
+**공유(공개) 게시물** 콘솔 계약이에요 — 앱들의 공개 게시판(`posts`)을 전량 조회하고 숨김/삭제/복원해요. 프라이빗 기록은 이 도메인에 안 와요(각 앱 자체 테이블). 파일(§19~§24)과 동일한 상태 전이·soft-delete·purge 패턴이고, 상태는 `ACTIVE`/`HIDDEN`/`DELETED` 3종이에요. **운영 작성**(공지·이벤트 등 관리자가 직접 쓰는 글 — 작성/수정/이미지 업로드)은 §39~§41, 본문(markdown + `attachment://`) 계약은 § "본문 계약"을 보세요.
 
 ### [25] `GET /api/admin/apps/{slug}/content`
 
@@ -429,8 +429,14 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
 - **Query**: `board`, `status`(`ACTIVE`|`HIDDEN`|`DELETED`), `page`(기본 0), `size`(기본 20)
 - **Response**: `PageResponse<AdminPost>`
   ```ts
+  type PostAuthorType = 'USER' | 'ADMIN'
   interface AdminPost {
-    id: number; authorUserId: number; board: string
+    id: number
+    authorUserId: number | null      // 앱 회원 작성자 id — ADMIN 작성 글은 null
+    authorType: PostAuthorType       // 'USER'(앱 회원, 기본) | 'ADMIN'(콘솔 관리자 — §39)
+    authoredBy: string | null        // ADMIN 작성 시 콘솔 계정 email, USER 작성이면 null
+    authorNickname: string | null    // 작성 시점 회원 닉네임 스냅샷 — ADMIN 작성이면 null
+    board: string
     title: string | null; body: string | null
     status: string // ACTIVE | HIDDEN | DELETED
     hiddenAt: string | null; hiddenReason: string | null
@@ -438,20 +444,23 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
     purgeAt: string | null; createdAt: string
   }
   ```
-  공개 게시물이라 작성자(`authorUserId`) 마스킹은 없어요(파일/유저의 PII reveal 패턴 불필요 — 백엔드 방침).
+  공개 게시물이라 작성자(`authorUserId`) 마스킹은 없어요(파일/유저의 PII reveal 패턴 불필요 — 백엔드 방침). `authorType`/`authoredBy`는 운영 작성(§39) 도입으로 추가된 필드예요 — `authorType='ADMIN'`이면 `authorUserId=null` + `authoredBy`=관리자 email(`hidden_by`/`deleted_by`와 동일 규약)이에요.
+
+  `authorNickname` 은 **작성 시점 닉네임 스냅샷**이에요 — 앱 회원이 글을 쓸 때 닉네임이 없으면 서버가 `users.nickname` 을 `익명의누군가#{userId}` 로 강제 세팅한 뒤 그 값을 `posts.author_nickname` 에 박제해요(이후 닉 변경에도 과거 글 표기는 불변). 콘솔 목록·상세의 작성자 표기는 이 필드를 쓰고, 없으면(구 데이터) `회원 #{id}` 로 폴백해요.
 - **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
 
 ### [26] `GET /api/admin/apps/{slug}/content/{id}`
 
 게시물 상세 — 본문 전체 + `properties` + 첨부 목록(모더레이션 판단용). 클라이언트 함수는 `getPostDetail`.
 
-- **Response** (`AdminPostDetail`): `AdminPost` 필드 + `properties: string | null` + `attachments: AdminPostAttachment[]`
+- **Response** (`AdminPostDetail`): `AdminPost` 필드(§25 — `authorType`/`authoredBy` 포함) + `properties: string | null` + `attachments: AdminPostAttachment[]`
   ```ts
   interface AdminPostAttachment {
     id: number; originalFilename: string | null; contentType: string | null
     sizeBytes: number | null; url: string | null   // presigned GET(~10분)
   }
   ```
+- **본문 렌더**: `body`는 markdown(관리자 작성 글) 또는 plain text(기존 회원 글)일 수 있어요 — § "본문 계약" 참고. 본문 내 이미지는 `![alt](attachment://{id})` 참조라 `attachments` 배열의 `id`→`url`로 해석해서 렌더해요.
 - **에러**: 게시물 없음 → `404 ADMIN_022`. 슬러그 없음 → `404 ADMIN_003`.
 
 ### [27] `POST /api/admin/apps/{slug}/content/{id}/hide`
@@ -540,9 +549,76 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ---
 
+## 게시물 작성 (운영 콘텐츠)
+
+모더레이션(§25~§30)에 더해, 관리자가 콘솔에서 **직접 게시물을 작성**하는 계약이에요 — 공지·이벤트 같은 운영 글을 앱들의 공개 게시판(`posts`)에 올려요. 백엔드는 §25~§30과 같은 `AdminContentController`이고, 쓰기 3종(§39~§41) 전부 `PERM_CONTENT_WRITE` 게이트예요 — 백엔드 `SecurityConfig`가 `/api/admin/apps/*/content/**`의 **POST/PUT/DELETE**에 `hasAuthority(PERM_CONTENT_WRITE)`를 걸어요(**PUT 포함** — 수정도 동일 권한). 프론트는 `PERM_CONTENT_WRITE` 없는 세션에 작성/수정 버튼을 숨기지만(`src/lib/rbac.ts`), 최종 강제는 백엔드예요.
+
+### 본문 계약 — markdown + `attachment://`
+
+`posts.body`의 계약이에요. 작성(§39)·수정(§40)·상세 렌더(§26)가 전부 이 규칙을 따라요.
+
+- **`body`는 markdown**이에요 — 관리자 작성 글(공지·이벤트)은 제목·굵게·목록·링크 등 markdown 문법으로 저장돼요.
+- **인라인 이미지는 `![alt](attachment://{attachmentId})` 참조**로 넣어요. `attachmentId`는 선업로드(§41)로 발급받은 첨부 id예요.
+  - **presigned URL 을 본문에 박제하지 않는 이유**: presigned GET URL 은 ~10분이면 만료돼요 — 본문에 URL 을 저장하면 저장 직후부터 깨진 이미지가 돼요. 참조(`attachment://{id}`)만 저장하고, 렌더 시점에 상세 응답(§26)의 `attachments[]`에서 `id`→`url`(그때그때 새로 발급된 presigned GET)로 해석해요.
+- **plain text 하위호환**: 기존 앱 회원 글은 markdown 이 아닌 평문이에요 — 렌더러(프론트 `PostBody`)가 평문 문장도 문단으로 안전하게 렌더하도록 통일 처리해요. 서버는 본문 형식을 검증하지 않아요(계약상 관례).
+- **작성 주체 필드**: `authorType`(`'USER'` | `'ADMIN'`)이 작성 주체를 구분하고, `authorType='ADMIN'`이면 `authorUserId=null` + `authoredBy`=콘솔 계정 email 이에요(§25 스키마 참고).
+
+### [39] `POST /api/admin/apps/{slug}/content`
+
+관리자 게시물 작성 — 서버가 `authorType='ADMIN'`, `authoredBy`=현재 콘솔 계정 email 로 저장하고, `attachmentIds`의 선업로드 첨부를 게시물에 **연관 확정**해요. 클라이언트 함수는 `createPost`.
+
+- **Request body** (`AdminPostWriteBody` — 백엔드 `AdminPostWriteRequest` 미러):
+  ```ts
+  interface AdminPostWriteBody {
+    board: string            // 선택, ≤50 — 미선택은 '' (미분류). 콘솔 셀렉트는 고정 4종(notice/event/qna/free)
+    title: string            // ≤300 (백엔드 스키마상 선택이지만 콘솔 폼은 필수 입력)
+    body: string             // markdown — § "본문 계약"
+    properties?: string | null // 자유 JSON 문자열 — 콘솔 작성 화면은 해시태그를 {"tags": string[]} 로 저장
+    attachmentIds?: number[] // §41 로 발급받은 첨부 id — 저장 시 연관 확정
+  }
+  ```
+- **board 시맨틱**: 콘솔에선 선택값이에요 — 미선택이면 서버가 빈 문자열(미분류)로 저장하고, 상세 화면은 board 태그를 숨겨요. (앱 회원용 `POST /api/apps/{slug}/posts` 의 `board`는 여전히 필수 — 콘솔 계약만 완화.)
+- **해시태그**: 작성 화면의 `#태그` 칩(다중 선택)은 `properties = JSON.stringify({ tags })` 로 실려요. 상세 화면이 `properties.tags` 배열을 파싱해 칩으로 렌더해요 — 서버는 `properties`를 자유 JSON 으로 취급하므로 별도 스키마 검증은 없어요.
+- **Response**: `AdminPostDetail`(§26과 동일 shape — 방금 쓴 글의 상세)
+- **감사**: `admin.content.create`(대상 앱 스키마 `audit_logs`).
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. 첨부 연관 확정 실패(첨부 부재·slug 불일치·비 ACTIVE·이미 다른 게시물에 연관) → `400 ADMIN_023`.
+
+### [40] `PUT /api/admin/apps/{slug}/content/{id}`
+
+게시물 수정 — `board`/`title`/`body`/`properties`를 교체하고 첨부를 재연관해요. **작성자(`authorType`/`authoredBy`)·상태는 불변**이에요. 클라이언트 함수는 `updatePost`. 권한은 §39와 동일하게 `PERM_CONTENT_WRITE`(PUT matcher).
+
+- **Request body**: §39와 동일(`AdminPostWriteBody`). `attachmentIds`는 **전체 재전송**이에요 — 이미 이 게시물에 연관된 id 는 멱등 통과, 새 선업로드 id 만 연관 확정돼요.
+- **Response**: 갱신된 `AdminPostDetail`
+- **감사**: `admin.content.update`.
+- **에러**: 게시물 없음 → `404 ADMIN_022`. 슬러그 없음 → `404 ADMIN_003`. 첨부 연관 실패 → `400 ADMIN_023`.
+
+### [41] `POST /api/admin/apps/{slug}/content/uploads`
+
+본문 이미지 **선업로드 티켓 발급** — 에디터의 이미지 버튼이 파일 선택 직후 호출해요. 서버가 첨부 메타를 미연관(`associatedId=null`) 상태로 선등록하고 presigned PUT/GET URL 쌍을 발급해요(`<slug>-uploads` 버킷, 둘 다 10분 만료). 클라이언트 함수는 `uploadContentImage`.
+
+- **Request body**: `{ filename: string, contentType: string, sizeBytes: number }` — `filename` ≤255, `contentType` ≤100 · **`image/*`만 허용**, `sizeBytes` 양수.
+- **Response** (`ContentUploadTicket`):
+  ```ts
+  interface ContentUploadTicket {
+    attachmentId: number  // 본문 참조(attachment://{id})·attachmentIds 연관에 쓰는 id
+    uploadUrl: string     // presigned PUT — 파일 바디를 그대로 업로드
+    previewUrl: string    // presigned GET — 에디터 미리보기용(~10분 만료)
+    expiresAt: string     // uploadUrl 만료 시각
+  }
+  ```
+- **업로드 → 작성 시퀀스**:
+  1. 이미지 선택 → §41 호출로 티켓 발급
+  2. `uploadUrl`(presigned PUT)로 파일 직접 업로드(`uploadFileToUrl` — JSON 봉투·인증 헤더 없이 스토리지 직행)
+  3. 에디터 본문엔 `![alt](attachment://{attachmentId})` 참조 삽입(화면 미리보기는 `previewUrl`)
+  4. 글 저장(§39/§40) 시 `attachmentIds`에 해당 id 를 실어 **연관 확정** — 확정 전 첨부는 미연관 상태로 남아요
+- **감사**: `admin.content.upload`(resourceType `AttachmentFile`).
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `contentType`이 `image/*` 아님 → `422 CMN_001`(bean validation 계약, 실서버·mock 동일).
+
+---
+
 ## 발송(메시징) — ⚠ mock 전용 (백엔드 미구현)
 
-발송 화면(`/send`)은 아래 6개 엔드포인트에 **실제로 배선**돼 있지만, `template-spring`엔 아직 대응 컨트롤러가 없어요 — **mock(MSW)에서만 동작**하고, 실서버 모드에선 404가 나요. 백엔드 구현이 따라오면 이 절이 §39+ 로 승격될 예정이에요. 그때까지는 계약(경로·DTO)이 mock 쪽 단독 정의라는 걸 감안하고 보세요.
+발송 화면(`/send`)은 아래 6개 엔드포인트에 **실제로 배선**돼 있지만, `template-spring`엔 아직 대응 컨트롤러가 없어요 — **mock(MSW)에서만 동작**하고, 실서버 모드에선 404가 나요. 백엔드 구현이 따라오면 이 절이 §42+ 로 승격될 예정이에요. 그때까지는 계약(경로·DTO)이 mock 쪽 단독 정의라는 걸 감안하고 보세요.
 
 | # | 엔드포인트 | 클라이언트 함수 | 용도 |
 |---|---|---|---|
@@ -571,7 +647,7 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 
 ## 에러 코드
 
-### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_022`
+### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_023`
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
@@ -597,6 +673,7 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 | `ADMIN_020` | 400 | `ADMIN_REFUND_AMOUNT_INVALID` | 환불 요청 금액이 남은 잔액을 초과(부분환불 §17) |
 | `ADMIN_021` | 400 | `ADMIN_REFUND_NOT_ALLOWED` | 환불 불가 상태(이미 전액 환불됐거나 `PAID`/`PARTIALLY_REFUNDED` 아님) |
 | `ADMIN_022` | 404 | `ADMIN_CONTENT_NOT_FOUND` | `/content/{id}` 모더레이션 대상 게시물 없음 |
+| `ADMIN_023` | 400 | `ATTACHMENT_ASSOCIATION_FAILED` | 작성/수정(§39~§40) 시 `attachmentIds` 연관 확정 실패 — 첨부 부재·slug 불일치·비 ACTIVE·이미 타 게시물에 연관(탈취 시도) |
 
 ### 공통 (`CommonError`, `common-web`)
 
