@@ -10,7 +10,7 @@
 
 | 파일 | 내용 |
 |------|------|
-| [`admin-api.md`](./admin-api.md) | 엔드포인트 11개 전체 — 요청 파라미터 · 응답 shape · 에러 코드 · 시맨틱 노트(gross/net, DAU/MAU, 리텐션) |
+| [`admin-api.md`](./admin-api.md) | 엔드포인트 전체(백엔드 매핑 전부 + mock 전용 발송 — 개수·목록은 그 문서 서두의 실측 기준) — 요청 파라미터 · 응답 shape · 에러 코드 · 시맨틱 노트(gross/net, DAU/MAU, 리텐션) |
 
 이 템플릿은 `template-flutter`처럼 도메인별로 문서를 쪼개지 않아요. Admin 콘솔은 **단일 계약 표면**(`/api/admin/*` 하나)이라 `admin-api.md` 한 파일에 전부 담겨 있어요.
 
@@ -24,7 +24,7 @@
 | 프론트 API 클라이언트 | `src/api/client.ts` |
 | Mock 구현 (개발용) | `src/mocks/handlers.ts`, `src/mocks/fixtures.ts` |
 | 백엔드 컨트롤러 | `template-spring`의 `core/core-admin-impl/.../controller/` |
-| 백엔드 에러 코드 | `AdminError.java`(`ADMIN_001~005`), `CommonError.java`(`CMN_004`/`CMN_005`/`CMN_006`) |
+| 백엔드 에러 코드 | `AdminError.java`(`ADMIN_001`~`ADMIN_022` — 현행 전체 표는 [`admin-api.md`](./admin-api.md) "에러 코드" 절), `CommonError.java`(`CMN_004`/`CMN_005`/`CMN_006`) |
 | 설계 스펙 원문 | `template-spring` 저장소의 `docs/superpowers/specs/2026-07-06-admin-module-design.md` |
 
 `src/lib/types.ts`의 인터페이스가 **프론트 쪽 계약의 진실**이에요 — mock과 실서버가 같은 타입을 공유해서 스키마 드리프트가 안 나요(`CLAUDE.md` §3 참고).
