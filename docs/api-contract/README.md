@@ -14,6 +14,8 @@
 
 이 템플릿은 `template-flutter`처럼 도메인별로 문서를 쪼개지 않아요. Admin 콘솔은 **단일 계약 표면**(`/api/admin/*` 하나)이라 `admin-api.md` 한 파일에 전부 담겨 있어요.
 
+> **각주(후속 사이클 안내)**: 게시물 본문 계약(markdown + `![alt](attachment://{id})` 참조 — `admin-api.md` § "본문 계약")은 관리자 콘솔 전용이 아니라, 후속 사이클에서 `template-flutter` 앱의 게시물 렌더에도 동일하게 적용될 예정이에요.
+
 ---
 
 ## 진실의 출처
@@ -24,7 +26,7 @@
 | 프론트 API 클라이언트 | `src/api/client.ts` |
 | Mock 구현 (개발용) | `src/mocks/handlers.ts`, `src/mocks/fixtures.ts` |
 | 백엔드 컨트롤러 | `template-spring`의 `core/core-admin-impl/.../controller/` |
-| 백엔드 에러 코드 | `AdminError.java`(`ADMIN_001`~`ADMIN_022` — 현행 전체 표는 [`admin-api.md`](./admin-api.md) "에러 코드" 절), `CommonError.java`(`CMN_004`/`CMN_005`/`CMN_006`) |
+| 백엔드 에러 코드 | `AdminError.java`(`ADMIN_001`~`ADMIN_023` — 현행 전체 표는 [`admin-api.md`](./admin-api.md) "에러 코드" 절), `CommonError.java`(`CMN_004`/`CMN_005`/`CMN_006`) |
 | 설계 스펙 원문 | `template-spring` 저장소의 `docs/superpowers/specs/2026-07-06-admin-module-design.md` |
 
 `src/lib/types.ts`의 인터페이스가 **프론트 쪽 계약의 진실**이에요 — mock과 실서버가 같은 타입을 공유해서 스키마 드리프트가 안 나요(`CLAUDE.md` §3 참고).
