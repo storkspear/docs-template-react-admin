@@ -309,6 +309,8 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
     amount: number; refundedAmount: number; currency: string; status: string
     paymentType: 'SUBSCRIPTION' | 'ONE_TIME'
     paidAt: string | null; refundedAt: string | null; externalId: string
+    method?: string | null // 결제수단(신용카드/계좌이체/간편결제/Google Play 등 — PG 웹훅 pay_method)
+    methodDetail?: string | null // 결제수단 상세 — 신용카드는 마스킹 카드번호(BIN 6 + 뒤 4)
     refundReason?: string | null
     periodStart?: string | null; periodEnd?: string | null // 구독 결제의 현재 기간(일할계산 근거)
   }
@@ -327,7 +329,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 - **Response**: 갱신된 `AdminPaymentListItem`(§16과 동일 shape) — 잔액을 다 환불하면 `status: 'REFUNDED'`, 일부만 남기면 `status: 'PARTIALLY_REFUNDED'`(잔액 남는 한 여러 번 환불 가능), `refundedAmount` 누적·`refundedAt` 갱신.
 - **일할계산(프론트)**: 구독 결제는 `periodStart`/`periodEnd`로 모달에서 잔여기간 비례 환불액(`amount × 잔여일 ÷ 전체일`)을 제안해요.
 - **에러**: PG 채널 아님 → `400 ADMIN_006`. 환불 불가 상태(이미 전액 환불·`PAID`/`PARTIALLY_REFUNDED` 아님) → `400 ADMIN_021`. 요청 금액이 남은 잔액 초과 → `400 ADMIN_020`(`amount≤0`은 그 전에 `@Positive` bean validation `422 CMN_*`). 결제 없음 → `404 ADMIN_007`. 슬러그 없음 → `404 ADMIN_003`.
-- **프론트 처리**: `PaymentsPage` 액션 컬럼은 `channel==='PG' && (status==='PAID' || status==='PARTIALLY_REFUNDED')`인 행만 버튼을 노출하고, 모달에서 결제금액/이미환불/잔액 + 금액 입력([전액] 프리셋)·사유를 받아요.
+- **프론트 처리**: `PaymentsPage` 액션 컬럼은 `channel==='PG' && (status==='PAID' || status==='PARTIALLY_REFUNDED')`인 행만 버튼을 노출하고, 모달에서 결제금액/이미환불/잔액 + 금액 입력([전액] 프리셋) + 사유를 받아요. 사유는 **프리셋 콤보**(단순 변심·구독 해지·중복 결제·결제 오류·불만족·직권 취소)에서 고르고, "직접 입력…" 선택 시에만 TextArea 로 자유 입력해요. 환불 성공 시 곧바로 영수증 팝업(§18b)이 열려요.
 
 ### [18] `GET /api/admin/apps/{slug}/payments/{paymentId}/refunds`
 
@@ -341,6 +343,48 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
   }
   ```
 - **데이터 소스**: `payment_refunds` 원장(환불 1건 = 1행). 매출 `refunded` 집계(§ gross/net)도 이 원장을 씁니다.
+
+### [18b] `GET /api/admin/apps/{slug}/payments/{paymentId}/receipt` — **mock 전용**
+
+결제 영수증 payload — **미리보기 팝업과 이메일 발송이 같은 이 payload 를 렌더**해요(단일 소스). 서버가 금액 원장(결제 + 환불 차감 행)과 발행처(§18d 설정)까지 조립해 내려주므로 화면과 메일 내용이 어긋날 수 없어요. 환불완료/부분환불 건의 상세 팝업 [영수증] 버튼과 환불 성공 직후 자동 팝업이 써요.
+
+- **Response**: `AdminPaymentReceipt`
+  ```ts
+  interface AdminPaymentReceipt {
+    receiptNo: string; issuedAt: string
+    serviceName: string                   // 결제가 발생한 서비스(앱)명 — 영수증 상단 워드마크
+    issuer: AdminReceiptSettings          // §18d — 발행처(사업자) 정보
+    paymentId: number; userEmail: string; channel: string
+    method: string                        // 결제수단(신용카드/계좌이체 등)
+    methodDetail: string | null           // 신용카드의 마스킹 카드번호(매출전표 관행: BIN 6 + 뒤 4)
+    externalId: string                    // 거래번호(결제수단과 별도 행)
+    status: string; paidAt: string | null
+    lines: { label: string; amount: number }[] // 결제 행 양수, 환불 차감 행 음수
+    netAmount: number                     // 최종 결제액 = 결제 금액 − 환불 합
+  }
+  ```
+- **실서버 반영 필요**: template-spring `AdminPaymentController` 에 아직 없어요. `VITE_USE_MOCK=false` 에선 404 — 백엔드에 §18b~§18d 3종(영수증 조립 + 메일 발송 + 발행처 설정 저장)이 함께 추가돼야 해요.
+
+### [18c] `POST /api/admin/apps/{slug}/payments/{paymentId}/receipt-email` — **mock 전용**
+
+§18b 와 **같은 payload** 로 만든 영수증을 결제자 이메일로 발송해요(서버측 메일 템플릿 렌더). 관리자가 수신자를 바꿀 수 없어요(결제자 고정).
+
+- **Response**: `{ sentTo: string }` — 발송된 수신자 이메일.
+- **에러**: 결제 없음 → `404 ADMIN_007`.
+
+### [18d] `GET`/`PUT /api/admin/settings/receipt` — **mock 전용**
+
+영수증 발행처 설정(설정 > 영수증 관리 카드) — 영수증(§18b/§18c) 하단 발행처 표기에 쓰여요.
+
+- **Body/Response**: `AdminReceiptSettings`
+  ```ts
+  interface AdminReceiptSettings {
+    email: string; businessNumber: string  // 사업자등록번호
+    address: string; businessName: string  // 사업장 주소 · 사업장명(상호)
+    phone: string                          // 대표 연락처(핸드폰번호)
+  }
+  ```
+- **에러(PUT)**: 5개 필드 중 하나라도 빈 값 → `422 CMN_001`.
 
 ---
 
