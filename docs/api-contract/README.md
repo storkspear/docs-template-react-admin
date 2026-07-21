@@ -64,4 +64,4 @@
 - [`admin-api.md`](./admin-api.md) — 엔드포인트 전체 계약
 - [`../guide/screens.md`](../guide/screens.md) — 화면이 각 엔드포인트를 어떻게 쓰는지
 - [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring)
-- 설계 스펙: `template-spring` 저장소의 `docs/superpowers/specs/2026-07-06-admin-module-design.md` (링크는 해당 브랜치가 `main`에 병합된 뒤 추가 예정)
+- 설계 스펙: [`template-spring`의 `docs/superpowers/specs/2026-07-06-admin-module-design.md`](https://github.com/storkspear/template-spring/blob/main/docs/superpowers/specs/2026-07-06-admin-module-design.md) (`main` 병합 완료)
