@@ -28,9 +28,9 @@ git clone git@github.com:<org>/<your-admin>.git && cd <your-admin>
 
 ---
 
-## 1. 브랜딩 — appConfig.ts / palette.ts / favicon
+## 1. 브랜딩 — appConfig.ts / moods.ts / palette.ts / favicon
 
-이 셋을 바꾸면 로고 워드마크·로그인 화면·그리드·차트·브라우저 탭까지 전부 따라와요. 코드 어디에도 이 값들을 하드코딩하면 안 돼요 — 항상 이 세 파일 참조.
+이것들을 바꾸면 로고 워드마크·로그인 화면·그리드·차트·브라우저 탭까지 전부 따라와요. 코드 어디에도 이 값들을 하드코딩하면 안 돼요 — 항상 이 파일들 참조. **UI 테마 색(antd·ag-grid·사이드바·로그인 그라디언트)의 단일 소스는 `src/lib/moods.ts`의 무드**예요 — 4종(Obsidian·Blurple·Ember·Glacier) 중 선택하거나 커스텀 무드를 추가하세요(`CLAUDE.md` §3).
 
 ### `src/appConfig.ts`
 
@@ -59,7 +59,7 @@ export const brand = {
 export const PRIMARY = brand[600]   // 버튼·링크·활성상태 전부 이 색
 ```
 
-`brand` 스케일만 교체하면 antd `ConfigProvider` 테마(`lib/theme.ts`)·ag-grid 테마·로그인 그라디언트·로고·`ComponentsPage`의 스와치까지 전부 따라가요. **hex를 컴포넌트에 직접 쓰지 마세요** — `brand[N]` / `semantic.*` / `alpha(hex, a)`를 참조하세요(`CLAUDE.md` §6 컨벤션).
+`brand` 스케일은 이제 **차트 기본색·종이(본문) 액센트 같은 무드 무관 보조색**에만 쓰여요 — antd `ConfigProvider` 테마(`lib/theme.ts`)·ag-grid 테마(`lib/agGrid.ts`)·로그인 그라디언트·`ComponentsPage` 스와치는 `moods.ts`의 무드에서 파생돼요(2026-07 디자인 리프레시). **hex를 컴포넌트에 직접 쓰지 마세요** — `brand[N]` / `semantic.*` / `alpha(hex, a)`를 참조하세요(`CLAUDE.md` §6 컨벤션).
 
 ### `public/favicon.svg` (예외 — 정적 파일이라 별도 수정)
 
@@ -68,7 +68,7 @@ export const PRIMARY = brand[600]   // 버튼·링크·활성상태 전부 이 �
 <stop offset="1" stop-color="#4338ca" />  <!-- brand[700] -->
 ```
 
-정적 SVG라 JS 변수를 못 써요. `brand[600]`/`brand[700]`을 바꿨으면 **이 파일의 hex 두 개도 같이 손으로 맞춰야** 브랜드가 완전히 일치해요.
+정적 SVG라 JS 변수를 못 써요. 브랜드 색(무드 primary 또는 `brand` 스케일)을 바꿨으면 **이 파일의 hex 두 개도 같이 손으로 맞춰야** 브랜드가 완전히 일치해요(현재 값은 `brand[600]`/`brand[700]`과 동일).
 
 **체크**: `npm run dev` 후 로그인 화면 그라디언트·사이드바·`/components` 페이지의 색 스와치가 새 브랜드로 보이는지 확인.
 
@@ -213,7 +213,7 @@ export default function XxxPage() {
 ## 5. 최종 체크리스트
 
 - [ ] `appConfig.ts` — 앱 이름·로그인 문구 교체, `index.html`의 `<title>`도 맞춤
-- [ ] `palette.ts` — `brand` 스케일 교체 + `public/favicon.svg`의 hex 2곳 수동 동기화
+- [ ] `moods.ts` — 브랜드 무드 확정(4종 중 선택 or 커스텀 추가) + `public/favicon.svg`의 hex 2곳 수동 동기화 (차트·종이 보조색은 `palette.ts`)
 - [ ] `nav.tsx` — 이 앱에 필요한 메뉴만 남기고, 안 쓰는 페이지 파일도 삭제
 - [ ] `src/mocks/` — 데모 데이터를 이 앱 도메인으로 교체 (또는 실서버 전환으로 무시)
 - [ ] `src/api/client.ts` / `src/lib/types.ts` — 백엔드 계약과 1:1 확인 (`docs/api-contract/admin-api.md`)

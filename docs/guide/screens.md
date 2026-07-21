@@ -1,6 +1,6 @@
 # 화면 가이드
 
-`nav.tsx`(`NAV_ITEMS`)의 **사이드바 메뉴 화면 11개** + 헤더 계정 드롭다운으로 진입하는 설정(`/settings`) + 라벨 없이 라우트만 등록된 상세 화면 3개(앱 상세 `/apps/:slug` · 게시물 상세 `/content/:id` · 전체 이벤트 `/analytics/events`)로 구성돼요. 각 화면이 무엇을 보여주는지, 어떤 API 를 쓰는지, 모바일에서 어떻게 달라지는지를 정리했어요.
+`nav.tsx`(`NAV_ITEMS`)의 **사이드바 메뉴 화면 11개** + 헤더 계정 드롭다운으로 진입하는 설정(`/settings`) + 라벨 없이 라우트만 등록된 화면 4개(앱 상세 `/apps/:slug` · 게시물 작성 `/content/new` · 게시물 상세 `/content/:id` · 전체 이벤트 `/analytics/events`)로 구성돼요. 각 화면이 무엇을 보여주는지, 어떤 API 를 쓰는지, 모바일에서 어떻게 달라지는지를 정리했어요.
 
 사이드바 메뉴는 세 **그룹**으로 나뉘어요(`nav.tsx`의 `group`/`scope` — § "공통 패턴" 참고):
 
@@ -28,7 +28,7 @@
 
 - **API**:
   - `GET /dashboard/metrics?window=30d` — Row1 스탯 7개 + Row2 매출 점유 도넛(`perSlug`) + Row3 운영 신호(`totals.renewalFailures7d`/`webhookPending`/`webhookFailed`)
-  - `GET /analytics/revenue`, `GET /analytics/signups` — **slug 생략**(전앱 합산 시계열) → "전체 매출 추이"/"전체 가입 추이" 차트
+  - `GET /analytics/revenue?slug=`, `GET /analytics/signups?slug=` — **슬러그마다 병렬 호출**(`useStackedTrend`, `useQueries`)해 상위 5개 앱은 각자 세그먼트·나머지는 '기타'로 합산한 적층 막대(`StackedBarChart`) → "전체 매출 추이"/"전체 가입 추이" 차트
   - `GET /audit-logs?result=FAILURE&size=5` — "최근 실패 5"
   - `GET /dashboard/top-customers?window=30d&size=5` — "고객 결제 TOP 5"
 - **인터랙션**(이동 목적지 있는 카드는 전부 클릭형, extra 링크 텍스트는 없음):
@@ -179,7 +179,7 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 | `/content/new` | `ContentComposePage` | 위 "8. 게시물" 작성 항목 참고 — 목록 우상단 [작성하기]로 진입 |
 | `/analytics/events` | `AnalyticsEventsPage` | 위 "9. 이벤트 분석" 참고 |
 
-전부 `nav.tsx`에 `label` 없이 등록돼요 — 사이드바 메뉴엔 안 뜨고 라우트만 잡혀요.
+`/login`만 `App.tsx`에 별도 `<Route>`로 등록되고, 나머지는 전부 `nav.tsx`에 `label` 없이 등록돼요 — 사이드바 메뉴엔 안 뜨고 라우트만 잡혀요.
 
 ## 공통 패턴
 

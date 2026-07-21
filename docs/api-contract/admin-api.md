@@ -2,7 +2,7 @@
 
 `template-spring`의 `core/core-admin-impl` 모듈이 제공하는 `/api/admin/*` 전체 계약이에요. 프론트 타입은 `src/lib/types.ts`, 클라이언트 함수는 `src/api/client.ts`, mock 구현은 `src/mocks/handlers.ts` + `fixtures.ts`에 있어요.
 
-**범위(실측)**: 백엔드 매핑 **41개**(§1~§41 — 데이터 39 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)를 다뤄요. `src/api/client.ts`의 export 함수는 48개(= 백엔드 대응 40 + mock 전용 발송 6 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§38은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
+**범위(실측)**: 백엔드 매핑 **41개**(§1~§41 — 데이터 39 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)·영수증 4개(§18b~§18d — 설정 GET/PUT 포함)를 다뤄요. `src/api/client.ts`의 export 함수는 52개(= 백엔드 대응 40 + mock 전용 발송 6 + mock 전용 영수증 4 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§41은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
 
 > **인증 스코프 — RBAC 4티어**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 계정으로 콘솔 JWT 를 발급하는데, `role` claim 은 **RBAC 4티어 코드**(`viewer` < `support` < `admin` < `master` — 누적)이고, 역할에서 계산된 효과 권한(`PERM_*` 목록)이 **`permissions` claim** 으로 실려요. 백엔드 `SecurityConfig`가 `/api/admin/**` 리소스별로 `hasAuthority(PERM_*)`를 검사해요(예: 환불 POST 는 `PERM_PAYMENTS_WRITE`). 앱 유저 JWT 는 `permissions` claim 이 없어 `/api/admin/**`에서 403, 반대로 콘솔 JWT(`appSlug="admin"`)로 `/api/apps/{slug}/**`에 접근하면 `AppSlugVerificationFilter`가 403 — 양방향 격리예요. 프론트는 로그인 응답의 `admin.permissions`로 메뉴/버튼을 게이팅하지만(`src/lib/rbac.ts`), 최종 강제는 항상 백엔드예요.
 
@@ -265,7 +265,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 시계열 차트 데이터.
 
 - **Path**: `metric` = `dau` | `signups` | `revenue` (백엔드 `switch`문 — 그 외 값은 `400 ADMIN_002`)
-- **Query**: `slug`(**선택** — 생략 시 전앱 합산 시계열), `from`, `to` (생략 시 최근 30일). **`interval`은 요청에 안 쓰여요** — 응답의 `interval` 필드는 항상 `"day"`로 고정 반환돼요(백엔드가 파라미터를 안 읽음). 프론트 클라이언트(`getAnalytics`)가 `interval` 옵션을 넘겨도 무시돼요.
+- **Query**: `slug`(**선택** — 생략 시 전앱 합산 시계열), `from`, `to` (생략 시 최근 30일). **`interval`은 요청에 안 쓰여요** — 응답의 `interval` 필드는 항상 `"day"`로 고정 반환돼요(백엔드가 파라미터를 안 읽음). 프론트 클라이언트(`getAnalytics`)가 `interval` 옵션을 넘겨도 무시돼요. (단, mock 은 넘긴 값을 응답 `interval`에 그대로 echo 해요 — points 는 어느 쪽이든 일별이에요.)
 - **Response** (`TimeSeries`):
   ```ts
   interface TimeSeriesPoint { ts: string; value: number }
@@ -363,7 +363,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
     netAmount: number                     // 최종 결제액 = 결제 금액 − 환불 합
   }
   ```
-- **실서버 반영 필요**: template-spring `AdminPaymentController` 에 아직 없어요. `VITE_USE_MOCK=false` 에선 404 — 백엔드에 §18b~§18d 3종(영수증 조립 + 메일 발송 + 발행처 설정 저장)이 함께 추가돼야 해요.
+- **실서버 반영 필요**: template-spring `AdminPaymentsController` 에 아직 없어요. `VITE_USE_MOCK=false` 에선 404 — 백엔드에 §18b~§18d 3종(영수증 조립 + 메일 발송 + 발행처 설정 저장)이 함께 추가돼야 해요.
 
 ### [18c] `POST /api/admin/apps/{slug}/payments/{paymentId}/receipt-email` — **mock 전용**
 
@@ -449,7 +449,7 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
 
 - **Query**: `key`(필수)
 - **Response**: 갱신된 `AdminFile`
-- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`.
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. (mock 은 삭제 대상(`DELETED`)이 아닌 파일이면 `400 ADMIN_009`를 재사용해 거절하지만, 실서버엔 이 분기가 없어요 — 상태 검증 없이 그대로 ACTIVE 로 되돌려요.)
 
 ### [24] `DELETE /api/admin/apps/{slug}/files?key=`
 
@@ -457,7 +457,7 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
 
 - **Query**: `key`(필수, 삭제 대상 오브젝트 키)
 - **Request Body**: `{ reason: string }` — 삭제 사유 필수
-- **Response**: 갱신된 `AdminFile`(`status: 'DELETED'`, `deleteReason`/`deletedAt`/`purgeAt` 채워짐)
+- **Response**: 실서버는 갱신된 `AdminFile`(`status: 'DELETED'`, `deleteReason`/`deletedAt`/`purgeAt` 채워짐)을 내려주지만, 클라이언트(`deleteAppFile`)는 반환값을 쓰지 않고 `Promise<void>`로 버려요(mock 도 `data: null` 반환) — 갱신 행이 필요하면 목록을 재조회해요.
 - **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`.
 
 ---
@@ -723,6 +723,7 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
+| `CMN_001` | 422 | `VALIDATION_ERROR` | 입력값 검증에 실패했습니다 (bean validation — §17 `@Positive amount`·§18d·§41 의 422 가 전부 이 코드예요) |
 | `CMN_004` | 401 | `UNAUTHORIZED` | 인증이 필요합니다 (토큰 없음/무효 — admin 토큰은 refresh가 없으니 만료되면 재로그인) |
 | `CMN_005` | 403 | `FORBIDDEN` | 권한이 없습니다 (필요한 `PERM_*` 없음, 앱 유저 JWT 로 `/api/admin/**` 접근, 콘솔 JWT 로 `/api/apps/{slug}/**` 접근) |
 | `CMN_006` | 500 | (서버 내부 오류) | catch-all — 처리 안 된 예외가 여기로 떨어져요 |
