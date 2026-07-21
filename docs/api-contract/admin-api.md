@@ -2,7 +2,7 @@
 
 `template-spring`의 `core/core-admin-impl` 모듈이 제공하는 `/api/admin/*` 전체 계약이에요. 프론트 타입은 `src/lib/types.ts`, 클라이언트 함수는 `src/api/client.ts`, mock 구현은 `src/mocks/handlers.ts` + `fixtures.ts`에 있어요.
 
-**범위(실측)**: 백엔드 매핑 **41개**(§1~§41 — 데이터 39 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)·영수증 4개(§18b~§18d — 설정 GET/PUT 포함)를 다뤄요. `src/api/client.ts`의 export 함수는 52개(= 백엔드 대응 40 + mock 전용 발송 6 + mock 전용 영수증 4 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§41은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
+**범위(실측)**: 백엔드 매핑 **43개**(§1~§43 — 데이터 41 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)·영수증 4개(§18b~§18d — 설정 GET/PUT 포함)를 다뤄요. `src/api/client.ts`의 export 함수는 54개(= 백엔드 대응 42 + mock 전용 발송 6 + mock 전용 영수증 4 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§43은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
 
 > **인증 스코프 — RBAC 4티어**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 계정으로 콘솔 JWT 를 발급하는데, `role` claim 은 **RBAC 4티어 코드**(`viewer` < `support` < `admin` < `master` — 누적)이고, 역할에서 계산된 효과 권한(`PERM_*` 목록)이 **`permissions` claim** 으로 실려요. 백엔드 `SecurityConfig`가 `/api/admin/**` 리소스별로 `hasAuthority(PERM_*)`를 검사해요(예: 환불 POST 는 `PERM_PAYMENTS_WRITE`). 앱 유저 JWT 는 `permissions` claim 이 없어 `/api/admin/**`에서 403, 반대로 콘솔 JWT(`appSlug="admin"`)로 `/api/apps/{slug}/**`에 접근하면 `AppSlugVerificationFilter`가 403 — 양방향 격리예요. 프론트는 로그인 응답의 `admin.permissions`로 메뉴/버튼을 게이팅하지만(`src/lib/rbac.ts`), 최종 강제는 항상 백엔드예요.
 
@@ -238,6 +238,39 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 - **Response**: `AdminUserDetail`(§10과 동일 shape, 단 마스킹 없이 원본)
 - **감사**: 서버가 열람 사실을 `user_read_history`에 기록해요 — "누가 누구의 원본을 봤는지"가 남아요. 프론트는 드로어를 다시 열면 다시 마스킹 상태로 시작해요(열람 = 명시 액션).
 - **에러**: §10과 동일(`ADMIN_005`/`ADMIN_003`).
+
+### [42] `GET /api/admin/apps/{slug}/users/{userId}/export` — GDPR 개인정보 export (v1.11)
+
+GDPR 열람권(Art.15) 대응 — 한 사용자의 연관 데이터를 **JSON 번들 1개**로 반환해요. **전 PII 원본**을 노출하므로 `PERM_USERS_UNMASK` 로 게이팅(READ 만으로는 403 `CMN_005`)하고, 발급 사실은 `user_read_history`에 `EXPORT`로 기록돼요. 첨부 **파일 실체는 미포함** — `attachments[].storageKey` 메타만 담고 개별 다운로드는 파일 화면(§19~§20)에서 해요. 클라이언트 함수는 `exportUser`. 프론트는 사용자 상세 드로어에서 "데이터 내보내기" 버튼(`PERM_USERS_UNMASK` 게이팅, reveal 버튼 선례)으로 호출해 응답을 `user-{id}-export.json` 파일로 내려받아요.
+
+- **Response** (`AdminUserExportResponse`):
+  ```ts
+  interface AdminNotificationSetting { kind: string; pushEnabled: boolean; emailEnabled: boolean }
+  interface AdminExportPost { id: number; board: string; title: string | null; status: string; createdAt: string }
+  interface AdminExportAttachment {
+    id: number; storageKey: string; originalFilename: string | null
+    sizeBytes: number; status: string; createdAt: string
+  }
+  interface AdminUserExportResponse {
+    exportedAt: string; slug: string
+    user: AdminUserFull                        // §10
+    socialProviders: string[]                  // provider 목록(예: ["google"])
+    devices: AdminDevice[]; subscriptions: AdminSubscription[]
+    payments: AdminPayment[]                   // 전체(상세의 최근 10건 제한 없음)
+    notificationSettings: AdminNotificationSetting[]
+    activityDays: string[]                     // LocalDate('YYYY-MM-DD') 목록
+    posts: AdminExportPost[]                    // 메타(본문 제외)
+    attachments: AdminExportAttachment[]        // 메타(오브젝트 실체 제외)
+  }
+  ```
+- **에러**: 사용자 없음 → `404 ADMIN_005`. **이미 익명화된 사용자** → `410 ADMIN_025`. 슬러그 없음 → `404 ADMIN_003`. 권한 없음(UNMASK 부재) → `403 CMN_005`.
+
+### [43] `DELETE /api/admin/apps/{slug}/users/{userId}` — 콘솔 탈퇴 (soft-delete, v1.11)
+
+GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동일 시맨틱(`deleted_at` 세팅 + 해당 유저 refresh token 전체 revoke)을 콘솔 경로로 노출해요. 쓰기 권한 `PERM_USERS_WRITE`(**신규** — 기본 grant 는 `master`만. `UNMASK` 만으로는 삭제 불가)로 게이팅해요. soft-delete 후 **30일 유예**가 지나면 `UserErasureScheduler`가 도메인별 처리표대로 완전삭제/익명화해요(auth 토큰·소셜·기기·알림설정·활동일은 hard delete, `users`·`payment_history`·`posts`·`analytics_events`는 익명화, 결제·구독·감사 원장은 법정 보존). 클라이언트 함수는 `deleteUser`. 프론트는 상세 드로어의 "계정 삭제" 버튼(`PERM_USERS_WRITE` 게이팅)으로 호출하며, 되돌릴 수 없음·30일 유예 익명화를 확인 모달로 안내해요.
+
+- **Response**: 본문 없는 성공 — `200` + `{ data: null, error: null }`(`ApiResponse.empty()`). 클라이언트(`deleteUser`)는 `Promise<void>`.
+- **에러**: **이미 탈퇴 처리** → `400 ADMIN_024`. **이미 익명화** → `410 ADMIN_025`. 사용자 없음 → `404 ADMIN_005`. 슬러그 없음 → `404 ADMIN_003`. 권한 없음(WRITE 부재) → `403 CMN_005`.
 
 ---
 
