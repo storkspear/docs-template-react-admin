@@ -17,6 +17,15 @@ git clone git@github.com:<org>/<your-admin>.git && cd <your-admin>
 
 `dev start`는 `.env`의 `VITE_PROXY_TARGET_DEV`를 프로브 대상으로 써요(미설정 시 에러 안내). `prod start`는 로컬 dev 서버로 안 붙고 정적 배포 안내만 출력해요 — prod는 `npm run build` 결과물을 호스팅에 올리는 방식이에요.
 
+### dev 배포 — `<repo> dev deploy` (Mac mini nginx + Cloudflare Tunnel)
+
+홈서버(Mac mini)에 관리자 콘솔 dev 를 정적 배포하는 한 방 명령이에요 (`tools/deploy-dev.sh`).
+
+1. `.env` 의 "dev 배포" 절 키를 채워요: `BASE_DOMAIN` · `DEPLOY_HOST`(Tailscale IP 권장) · `DEPLOY_SSH_USER` · `CLOUDFLARE_API_TOKEN` (+ 선택: `ADMIN_SUBDOMAIN`(기본 dev-admin) · `BACKEND_SUBDOMAIN`(기본 dev-server) · `VITE_USE_MOCK`)
+2. `<repo> dev deploy` — 빌드 → rsync → **nginx server block 생성**(SPA fallback + same-origin `/api` 를 로컬 kamal-proxy 로 Host 리라이트 프록시 — CORS 불필요) → **Cloudflare DNS·터널 ingress 등록**(멱등) → 헬스체크까지 한 번에.
+3. **mock ↔ 실서버 전환**: `.env` 의 `VITE_USE_MOCK` 만 바꾸고 같은 명령 재실행 — Vite 는 빌드타임 주입이라 재빌드+재배포가 정석이에요.
+4. `<repo> dev clear` — 정확한 역방향(ingress·DNS·nginx block·산출물 제거). 같은 서버의 다른 정적 사이트와 cloudflared 데몬은 절대 건드리지 않아요.
+
 ---
 
 ## 1. 브랜딩 — appConfig.ts / palette.ts / favicon
