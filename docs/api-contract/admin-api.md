@@ -427,8 +427,8 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 파일 화면(`/files`)이 쓰는 업로드 파일 목록 — **서버 페이지네이션**이에요(`PageResponse`, users/payments 와 동일 계약이라 `useAdminList`를 그대로 재사용). 정렬은 최신순.
 
-- **Query(실서버)**: `prefix`(접두사 매치), `kind`(`image`|`video`|`audio` — 타입 탭), `status`(`deleted`면 soft-delete 된 "삭제 대상"만, 없으면 정상+검역), `page`(기본 0), `size`
-- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `dateField`+`dateFrom`/`dateTo`(생성일/수정일 기간), `source`(`user`|`post`|`other` — 출처(연관 대상) 필터: 사용자/게시물/그 외·미연관), `assocId`(출처 드릴다운 — 목록의 출처 태그 클릭 시 `source`와 함께 특정 연관 id 로 좁힘) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
+- **Query(실서버)**: `prefix`(접두사 매치), `kind`(`image`|`video`|`audio` — 타입 탭), `status`(`deleted`면 soft-delete 된 "삭제 대상"만, 없으면 정상+검역), `source`(`user`|`post`|`other` — 출처(연관 대상) 필터: 사용자/게시물/그 외·미연관. 2026-07-22 도그푸딩에서 서버 구현됨), `assocId`(출처 드릴다운 — 목록의 출처 태그 클릭 시 `source`와 함께 특정 연관 id 로 좁힘. `source` 와 AND 결합), `page`(기본 0), `size`
+- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `dateField`+`dateFrom`/`dateTo`(생성일/수정일 기간) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
 - **Response**: `AdminFileList` = `PageResponse<AdminFile>`
   ```ts
   type AdminFileStatus = 'ACTIVE' | 'QUARANTINED' | 'DELETED'

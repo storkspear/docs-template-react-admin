@@ -91,8 +91,9 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 선택된 앱 스토리지의 업로드 파일을 조회·모더레이션(검역/삭제/복원)하는 화면이에요. **서버 페이지네이션**(`PageResponse` — 사용자·결제와 동일 계약)이라 `useAdminList`를 그대로 써요.
 
 - **타입 탭**(`ViewTabs`): **전체 / 이미지 / 영상 / 오디오 / 삭제 대상** — 이미지·영상·오디오는 서버 `kind` 필터, "삭제 대상"은 soft-delete 된 파일(`status=deleted`)만 따로 봐요.
-  - **전체·오디오·삭제 대상**: `AdminDataGrid` — 데스크톱 번호 페이지네이션 / 모바일 무한스크롤(`useAdminList` 표준). 오디오는 행에서 바로 재생(`AudioList`).
-  - **이미지·영상**: 썸네일 **미디어 그리드**(`MediaGrid`, `useInfiniteQuery` 무한스크롤, 한 번에 24개) — 그리드/리스트 뷰 토글이 따로 있어요.
+  - **전체·삭제 대상**: `AdminDataGrid` — 데스크톱 번호 페이지네이션 / 모바일 무한스크롤(`useAdminList` 표준).
+  - **오디오**: 커스텀 `AudioList`(데이터는 `useAdminList` — 데스크톱 번호 페이지네이션 / 모바일 무한스크롤) — 행에서 바로 재생.
+  - **이미지·영상**: 그리드 뷰는 썸네일 **미디어 그리드**(`MediaGrid`, `useInfiniteQuery` 무한스크롤, 한 번에 24개), 리스트 뷰는 `AdminMiniGrid`(`mediaListColumns`) — 그리드/리스트 뷰 토글이 따로 있어요.
 - **필터**: prefix · 파일명(원본 파일명/key 부분일치) · 업로더 · 상태(정상/검역) · 기간(생성일/수정일 선택 + 범위). 정렬 셀렉트(최신순/오래된순/용량순 — 현 페이지 한정) + 북마크(즐겨찾기)만 보기 토글.
 - **미리보기·라이트박스**: 이미지·영상 셀/썸네일 클릭 → 반응형 **`MediaModal`**(라이트박스)로 크게 봐요(새 탭 아님). `url`은 presigned GET(~10분)이라 만료되면 재검색 안내가 떠요.
 - **상세 드로어**(`FileDetailDrawer`): 파일 메타(원본 파일명·MIME·크기·연관 대상(게시물/사용자)·업로드/수정 시각) + 업로더·IP·기기 정보. 업로더·IP·기기는 `PERM_FILES_UNMASK` 없으면 마스킹 — "업로더·IP·기기 조회" 버튼으로 단건 원본 열람(`GET .../files/{key}/reveal`, 열람 기록됨).
@@ -111,7 +112,7 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 - **작성**(`ContentComposePage`, `/content/new`): 흰 종이 캔버스 에디터(Tiptap). **상단 sticky 바가 `[목록] · [카테고리 선택]` (좌) / `[폭 토글] [등록]` (우)** 구조예요 — 카테고리(board)는 글의 내용이 아니라 발행 설정이라 본문 캔버스에서 분리해 이 바에 뒀어요(`UnderlineSelect`, 고정 4종 + "카테고리 선택"으로 해제). 본문 캔버스는 제목 → 해시태그 → 에디터 순서로 글 자체에만 집중해요.
 - **본문 폭**(`usePaperWidth`): 작성 화면의 폭 토글(기본 760px ↔ 넓게)에서 정한 폭이 **글 속성 `properties.wide` 로 저장**되고, 상세(읽기)가 그 값으로 렌더해요 — **넓게 쓴 글은 넓게, 좁게 쓴 글은 좁게 읽혀요**. 상세엔 폭 토글을 두지 않아요(읽는 사람이 바꿀 값이 아니라 글의 속성이라서요). localStorage(`admin.composeWide`)는 "다음 새 글의 기본 폭"으로만 쓰여요.
 - **soft-delete**: 파일과 동일 — 삭제는 사유 필수 + 30일 후 purge, 그 전엔 복원 가능(`purgeAt` D-day).
-- **API**: `GET /apps/{slug}/content?board=&status=&page=&size=`, `GET .../content/{id}`, `POST .../content/{id}/hide|restore|restore-deleted`, `DELETE .../content/{id}` (계약은 [`admin-api.md`](../api-contract/admin-api.md) §25~§30)
+- **API**: `GET /apps/{slug}/content?board=&status=&page=&size=`, `GET .../content/{id}`, `POST .../content/{id}/hide|restore|restore-deleted`, `DELETE .../content/{id}`, `POST .../content`(작성, §39), `POST .../content/uploads`(이미지 선업로드, §41) (계약은 [`admin-api.md`](../api-contract/admin-api.md) §25~§30·§39·§41)
 - **권한**: 조회 `PERM_CONTENT_READ`, 액션 `PERM_CONTENT_WRITE`(`canWrite('/content')`). 공개 게시물이라 작성자 마스킹은 없어요.
 - **모바일**: 목록은 무한스크롤 + 카드 목록, 상세는 세로 스택.
 
@@ -130,7 +131,7 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 
 - **딥링크**: `?status=REFUNDED`·`?slug=` 쿼리 파라미터로 진입하면(대시보드 "환불 (30일)" 카드·TrendDrawer 등) `useSearchParams`로 마운트 시 1회 읽어 상태 필터·앱 컨텍스트에 반영해요(감사로그의 `?result=FAILURE` 패턴과 동일).
 - **API**: `GET /apps/{slug}/payments?query=&channel=&status=&type=&from=&to=&page=&size=`, `POST /apps/{slug}/payments/{paymentId}/refund` (환불), `GET /apps/{slug}/payments/{paymentId}/refunds` (환불 이력), `GET .../receipt` + `POST .../receipt-email` (영수증 조회·발송 — mock 전용, admin-api.md §18b~§18c)
-- **컬럼**: 일련번호·상태(Tag — 한글 라벨 `lib/paymentStatus`: 결제완료 green/부분환불 gold/환불완료 gray/실패 red)·채널(Tag)·유형(Tag — 구독 purple/일반 default)·이메일(복사 버튼)·금액(우측정렬 — 부분/전액 환불 시 아래 `환불 −₩…` 누적액)·결제일시·환불일시(`null`이면 `—`)·액션(PG·`PAID`/`PARTIALLY_REFUNDED` 행만 "환불" 버튼, IAP 는 툴팁 + `—`). 행 틴트: 부분환불 amber·전액환불 옅은 회색.
+- **컬럼**: 일련번호·상태(`StatusBadge` — 한글 라벨 `lib/paymentStatus`: 결제완료 success/부분환불 warning/환불완료 neutral/실패 danger, 대기(`READY`) info)·채널(`StatusBadge` info)·유형(`StatusBadge` — 구독 brand/일반 neutral)·이메일(복사 버튼)·금액(가운데 정렬 — 부분/전액 환불 시 아래 `환불 −₩…` 누적액)·결제일시·환불일시(`null`이면 `—`)·액션(PG·`PAID`/`PARTIALLY_REFUNDED` 행만 "환불" 버튼, IAP 미환불 행은 툴팁 + `—`. 환불완료(`REFUNDED`)·부분환불 건은 채널 무관하게 [영수증] 버튼이 환불 가능 시 [환불]과 함께 노출). 행 틴트: 부분환불 amber·전액환불 옅은 회색.
 - **결제 상세·환불 이력 팝업**(읽기 전용): 금액/상태 셀 클릭으로 진입. 영수증 스타일(결제 금액 − 환불됨 = 환불 가능 잔액, 잔액만 강조) + 일시 + 환불 이력 원장(건별 금액·사유·시각·처리자). 환불 가능(PG·PAID/부분환불)하고 쓰기 권한이 있으면 [환불 진행] 버튼이 환불 모달로 연결.
 - **환불 모달**(중앙): 컨텍스트 서브라인(이메일·유형·채널) + 환불 가능 잔액 히어로 + 금액 입력([전액]·[잔여기간 비례 ₩N] 프리셋 칩 — 일할계산식은 칩 툴팁, 계산 불가 사유(기간 만료 등)는 disabled 칩 툴팁)·상태 예고 캡션·**사유(프리셋 콤보 — 단순 변심/구독 해지/중복 결제/결제 오류/불만족/직권 취소, "직접 입력…" 선택 시에만 TextArea)**. 잔액 다 환불 시 `REFUNDED`, 일부면 `PARTIALLY_REFUNDED`(재환불 가능). 환불 버튼은 `PERM_PAYMENTS_WRITE` 게이팅. 환불 이력은 상세 팝업이 전담("이력 보기" 링크로 이동).
 - **영수증 팝업**: 환불 성공 직후 자동으로 열리고, 상세 팝업의 [영수증] 버튼(환불완료/부분환불 건)으로도 진입해요. 서버가 조립한 payload(§18b — 서비스명·영수증번호·결제수단(신용카드는 마스킹 카드번호)·거래번호·금액 원장·발행처)를 그대로 렌더하고, [이미지로 저장]으로 같은 데이터를 JPEG(캔버스 렌더)로 내려받을 수 있고, [이메일로 발송]은 **같은 payload** 로 만든 영수증을 결제자에게 보내요(§18c) — 미리보기와 발송본이 항상 일치. 발행처 정보는 설정 > 영수증 관리에서 입력해요.
@@ -194,7 +195,7 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 - **앱 컨텍스트**: 헤더의 앱 스위처로 앱을 선택하면 `scope: 'app'` 메뉴(앱별 그룹)가 사이드바에 나타나고, 해당 화면들은 전부 선택된 앱 기준으로 조회해요. 앱 미선택 시엔 "상단에서 앱을 선택하세요" Empty 상태를 보여줘요.
 - **RBAC 게이팅**(`src/lib/rbac.ts`): 로그인 응답의 `permissions`(효과 권한 `PERM_*`)로 — ① 사이드바 메뉴를 `canReadKey`로 거르고(권한 없는 메뉴는 아예 안 보임), ② 화면 안의 쓰기 액션(환불·검역·삭제·발송 등)을 `canWrite`로 숨겨요. 이건 UX 게이팅일 뿐이고 최종 강제는 백엔드(`hasAuthority`)예요.
 - **PII 마스킹 + "조회"(reveal)**: 사용자(이메일·닉네임 등)와 파일(업로더·IP·기기)은 `PERM_*_UNMASK` 없는 세션에 마스킹돼 내려와요. 상세 드로어의 "조회" 버튼으로 **단건 원본**을 열람하면 서버가 `user_read_history`에 열람 기록을 남기고, 드로어를 다시 열면 다시 마스킹 상태로 시작해요(열람 = 명시적·기록되는 액션).
-- **목록형 화면** (사용자·파일·게시물·결제·감사로그·앱 상세의 사용자 탭)은 `GridPage` + `AdminDataGrid` + `useAdminList` 조합이에요. PC 는 그리드 위 인라인 필터 바 + 하단 페이지네이션, 모바일은 "필터" 버튼(풀스크린 모달) + 카드 목록 + 무한스크롤로 자동 전환돼요. 파일의 이미지·영상 탭만 예외로 썸네일 미디어 그리드(무한스크롤)를 써요.
+- **목록형 화면** (사용자·파일·게시물·결제·감사로그·앱 상세의 사용자 탭)은 `GridPage` + `AdminDataGrid` + `useAdminList` 조합이에요. PC 는 그리드 위 인라인 필터 바 + 하단 페이지네이션, 모바일은 "필터" 버튼(풀스크린 모달) + 카드 목록 + 무한스크롤로 자동 전환돼요. 파일의 이미지·영상 탭은 썸네일 미디어 그리드(`MediaGrid`, 무한스크롤), 오디오 탭은 커스텀 `AudioList`(데이터는 `useAdminList`)로 예외 처리해요.
 - **참조형 표** (매출 분석의 앱 목록)는 서버 페이지네이션이 필요 없는 `AdminMiniGrid`를 써요 — 모바일에선 카드 목록으로만 전환되고 무한스크롤은 없어요. (대시보드는 IA 재편으로 이 패턴을 더 이상 안 써요 — 앱별 지표 미니그리드를 삭제하고 도넛+범례(`MiniPieChart`)로 대체했어요. 파일 목록도 서버 페이지네이션 도입으로 `AdminDataGrid`로 옮겨갔어요.)
 - **모더레이션 UX** (파일·게시물): 숨김(검역)=확인 모달, 삭제=**사유 필수 모달** + soft-delete(30일 후 purge, 그 전 복원 가능 — `purgeAt` D-day 표시), 복원=즉시. 상태 태그 + 행 틴트로 상태를 구분해요.
 - 새 화면을 추가하는 방법은 [`derived-repo.md`](./derived-repo.md)의 "화면 추가 패턴" 참고.
