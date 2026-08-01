@@ -959,4 +959,4 @@ DAU/MAU는 더미가 아니라 **진짜 활동 기록**이에요. 백엔드에 �
 - [`README.md`](./README.md) — 계약 문서 전체 구성 · 쌍 운영 규칙
 - [`../guide/screens.md`](../guide/screens.md) — 화면별 엔드포인트 사용처
 - [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring) — 백엔드 쪽 상세는 `docs/api-and-functional/admin-console.md`(§3 카탈로그가 이 문서와 같은 번호)
-- 설계 스펙 원문: `template-spring` 저장소의 `docs/superpowers/specs/2026-07-06-admin-module-design.md`
+- 설계 스펙 원문: `template-spring` 의 내부 설계문서 (gitignore — 저장소를 클론한 로컬의 `docs/superpowers/specs/` 에서만 열람)
