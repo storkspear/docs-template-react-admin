@@ -2,7 +2,7 @@
 
 `template-spring`의 `core/core-admin-impl` 모듈이 제공하는 `/api/admin/*` 전체 계약이에요. 프론트 타입은 `src/lib/types.ts`, 클라이언트 함수는 `src/api/client.ts`, mock 구현은 `src/mocks/handlers.ts` + `fixtures.ts`에 있어요.
 
-**범위(실측)**: 백엔드 매핑 **43개**(§1~§43 — 데이터 41 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)·영수증 4개(§18b~§18d — 설정 GET/PUT 포함)를 다뤄요. `src/api/client.ts`의 export 함수는 54개(= 백엔드 대응 42 + mock 전용 발송 6 + mock 전용 영수증 4 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§43은 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
+**범위(실측)**: 백엔드 매핑 **49개**(§1~§49 — 데이터 47 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)·영수증 4개(§18b~§18d — 설정 GET/PUT 포함)를 다뤄요. `src/api/client.ts`의 export 함수는 60개(= 백엔드 대응 48 + mock 전용 발송 6 + mock 전용 영수증 4 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§49는 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
 
 > **인증 스코프 — RBAC 4티어**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 계정으로 콘솔 JWT 를 발급하는데, `role` claim 은 **RBAC 4티어 코드**(`viewer` < `support` < `admin` < `master` — 누적)이고, 역할에서 계산된 효과 권한(`PERM_*` 목록)이 **`permissions` claim** 으로 실려요. 백엔드 `SecurityConfig`가 `/api/admin/**` 리소스별로 `hasAuthority(PERM_*)`를 검사해요(예: 환불 POST 는 `PERM_PAYMENTS_WRITE`). 앱 유저 JWT 는 `permissions` claim 이 없어 `/api/admin/**`에서 403, 반대로 콘솔 JWT(`appSlug="admin"`)로 `/api/apps/{slug}/**`에 접근하면 `AppSlugVerificationFilter`가 403 — 양방향 격리예요. 프론트는 로그인 응답의 `admin.permissions`로 메뉴/버튼을 게이팅하지만(`src/lib/rbac.ts`), 최종 강제는 항상 백엔드예요.
 
@@ -92,9 +92,21 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 
 - **Response**: `AppSummary[]`
   ```ts
-  interface AppSummary { slug: string; userCount: number; activeSubscriptions: number }
+  interface AppSummary {
+    slug: string
+    userCount: number
+    activeSubscriptions: number
+    revenue30d: number            // 최근 30일 결제 매출
+    iosVersion: string | null     // 스토어 배포 중인 현재 버전 — app_versions 최신 릴리스에서 유도
+    androidVersion: string | null
+    releasedAt: string | null     // 최초 출시일(YYYY-MM-DD) — 릴리스 이력에서 유도
+    lastUpdatedAt: string | null  // 최종 업데이트일
+    status: 'ok' | 'warn'         // 운영 상태 — 운영 신호에서 파생
+    issueLabel: string | null     // 이슈 요약 라벨(예: '갱신실패 2'). 없으면 null
+  }
   ```
-- **데이터 소스**: 슬러그 열거 + 각 앱 스키마의 `users` count · `subscriptions`(ACTIVE) count.
+- **데이터 소스**: 슬러그 열거 + 각 앱 스키마의 `users` count · `subscriptions`(ACTIVE) count · 최근 30일 `payment_history` 합산 · `app_versions` 최신 릴리스 · 운영 신호(갱신실패·웹훅)에서 `status`/`issueLabel` 파생.
+- **소비**: "서비스 현황"(`/apps`) 보드가 KPI·컬럼에서 전 필드를 써요.
 
 ### [4] `GET /api/admin/dashboard/metrics`
 
@@ -194,7 +206,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 
 앱 사용자 목록 검색 + 페이지네이션.
 
-- **Query**: `query`(이메일·표시이름·닉네임 ILIKE), `page`(기본 0), `size`(기본 20, **서버가 1~100으로 clamp**). 클라이언트(`getAppUsers`)가 넘길 수 있는 `email`/`name`/`nickname` 개별 필드 검색은 **mock 전용 확장**이에요 — 실서버 컨트롤러는 `query`/`page`/`size`만 읽어요.
+- **Query**: `query`(이메일·표시이름·닉네임 ILIKE), `page`(기본 0), `size`(기본 20, **서버가 1~100으로 clamp**). 클라이언트(`getAppUsers`)가 넘길 수 있는 `email`/`name`/`nickname` 개별 필드 검색과 `status`/`membership` 필터는 **mock 전용 확장**이에요 — 실서버 컨트롤러(`AdminUsersController`)는 `query`/`page`/`size`만 읽고 나머지는 무시해요. 사용자 화면의 상태·멤버십 셀렉트는 mock 에서만 실제로 걸러져요.
 - **Response**: `PageResponse<AdminUser>`
   ```ts
   interface AdminUser {
@@ -297,7 +309,7 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 시계열 차트 데이터.
 
-- **Path**: `metric` = `dau` | `signups` | `revenue` (백엔드 `switch`문 — 그 외 값은 `400 ADMIN_002`)
+- **Path**: `metric` = `dau` | `signups` | `revenue` | `net` | `refunds` | `failures` (백엔드 `switch`문 — 그 외 값은 `400 ADMIN_002`)
 - **Query**: `slug`(**선택** — 생략 시 전앱 합산 시계열), `from`, `to` (생략 시 최근 30일). **`interval`은 요청에 안 쓰여요** — 응답의 `interval` 필드는 항상 `"day"`로 고정 반환돼요(백엔드가 파라미터를 안 읽음). 프론트 클라이언트(`getAnalytics`)가 `interval` 옵션을 넘겨도 무시돼요. (단, mock 은 넘긴 값을 응답 `interval`에 그대로 echo 해요 — points 는 어느 쪽이든 일별이에요.)
 - **Response** (`TimeSeries`):
   ```ts
@@ -305,8 +317,18 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
   interface TimeSeries { metric: string; interval: string; points: TimeSeriesPoint[] }
   ```
   응답 shape은 `slug` 유무와 무관하게 동일해요 — `slug` 생략 시 값만 전앱 합산으로 바뀌어요.
-- **데이터 소스**: `slug` 지정 시 해당 앱 스키마만 집계. 생략 시 전 슬러그 fan-out 후 **날짜별로 합산**(대시보드 "전체 매출 추이"·"전체 가입 추이" 차트가 이 경로를 써요). `signups`=`users.created_at` 일별 집계, `revenue`=`payment_history.paid_at` 일별 집계(§ gross/net과 동일 시맨틱), `dau`=`user_activity_days`(§ DAU/MAU 정의).
-- **과거 이력**: 한때 `slug`가 컨트롤러 파라미터상 필수(`required=true`)라 누락 시 `500 CMN_006`으로 떨어지는 문제가 있었어요(이 문서 과거 리비전 참고). 지금은 `slug`가 선택 파라미터로 바뀌면서 이 문제 자체가 해소됐어요 — 생략은 이제 정상 케이스(전앱 합산)예요.
+- **데이터 소스**: `slug` 지정 시 해당 앱 스키마만 집계. 생략 시 전 슬러그 fan-out 후 **날짜별로 합산**(대시보드 "전체 매출 추이"·"전체 가입 추이" 차트가 이 경로를 써요).
+
+  | metric | 소스 | 비고 |
+  |---|---|---|
+  | `signups` | `users.created_at` 일별 | |
+  | `revenue` | `payment_history.paid_at` 일별 | § gross 와 동일 시맨틱 |
+  | `dau` | `user_activity_days` | § DAU/MAU 정의 |
+  | `refunds` | `payment_refunds.refunded_at` 일별 | 건별 환불일 귀속 — 다회 부분환불도 발생일별로 분리돼요 |
+  | `net` | `revenue` − `refunds` 일별 | 환불을 음수로 합산. 결제 없이 환불만 있는 날은 **음수** 포인트가 나와요 |
+  | `failures` | `audit_logs.occurred_at` 일별 (`result='FAILURE'`) | 대시보드 "실패" 카드와 같은 소스(카드는 24시간 단일값, 이쪽은 일별 추이) |
+
+  `MAU`·`활성 구독`은 시계열 metric 이 없어요 — rolling distinct(MAU)와 시점 복원(구독)이라 쿼리 성격이 달라서 별도 판단 대상이에요.
 
 ### [14] `GET /api/admin/analytics/events`
 
@@ -427,8 +449,8 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 파일 화면(`/files`)이 쓰는 업로드 파일 목록 — **서버 페이지네이션**이에요(`PageResponse`, users/payments 와 동일 계약이라 `useAdminList`를 그대로 재사용). 정렬은 최신순.
 
-- **Query(실서버)**: `prefix`(접두사 매치), `kind`(`image`|`video`|`audio` — 타입 탭), `status`(`deleted`면 soft-delete 된 "삭제 대상"만, 없으면 정상+검역), `source`(`user`|`post`|`other` — 출처(연관 대상) 필터: 사용자/게시물/그 외·미연관. 2026-07-22 도그푸딩에서 서버 구현됨), `assocId`(출처 드릴다운 — 목록의 출처 태그 클릭 시 `source`와 함께 특정 연관 id 로 좁힘. `source` 와 AND 결합), `page`(기본 0), `size`
-- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `dateField`+`dateFrom`/`dateTo`(생성일/수정일 기간) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
+- **Query(실서버)**: `prefix`(접두사 매치), `kind`(`image`|`video`|`audio` — 타입 탭), `status`(`deleted`면 soft-delete 된 "삭제 대상"만, 없으면 정상+검역), `source`(`user`|`post`|`other` — 출처(연관 대상) 필터: 사용자/게시물/그 외·미연관. 서버는 `USER`/`POST`/`OTHER` 로 매핑해 적용), `assocId`(출처 드릴다운 — 목록의 출처 태그 클릭 시 `source`와 함께 특정 연관 id 로 좁힘. `source` 와 AND 결합), `unassigned`(`true`면 연관 id 없는 선업로드(orphan)만 — 번호 없는 출처 칩 드릴다운), `page`(기본 0), `size`
+- **Query(mock 전용 확장)**: `filename`(원본 파일명/`key` 부분일치), `uploader`(업로더 부분일치), `quarantined`(`true`=검역만/`false`=정상만), `createdFrom`/`createdTo`(업로드 시각 범위, ISO) · `modifiedFrom`/`modifiedTo`(수정 시각 범위, ISO) — 실서버 컨트롤러는 아직 안 읽는 파라미터라 **실서버에선 무시**돼요. 클라이언트(`getAppFiles`)는 전부 넘길 수 있어요.
 - **Response**: `AdminFileList` = `PageResponse<AdminFile>`
   ```ts
   type AdminFileStatus = 'ACTIVE' | 'QUARANTINED' | 'DELETED'
@@ -628,7 +650,15 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ## 게시물 작성 (운영 콘텐츠)
 
-모더레이션(§25~§30)에 더해, 관리자가 콘솔에서 **직접 게시물을 작성**하는 계약이에요 — 공지·이벤트 같은 운영 글을 앱들의 공개 게시판(`posts`)에 올려요. 백엔드는 §25~§30과 같은 `AdminContentController`이고, 쓰기 3종(§39~§41) 전부 `PERM_CONTENT_WRITE` 게이트예요 — 백엔드 `SecurityConfig`가 `/api/admin/apps/*/content/**`의 **POST/PUT/DELETE**에 `hasAuthority(PERM_CONTENT_WRITE)`를 걸어요(**PUT 포함** — 수정도 동일 권한). 프론트는 `PERM_CONTENT_WRITE` 없는 세션에 작성/수정 버튼을 숨기지만(`src/lib/rbac.ts`), 최종 강제는 백엔드예요.
+모더레이션(§25~§30)에 더해, 관리자가 콘솔에서 **직접 게시물을 작성**하는 계약이에요 — 공지·이벤트 같은 운영 글을 앱들의 공개 게시판(`posts`)에 올려요. 백엔드는 §25~§30과 같은 `AdminContentController`이고, 권한은 **메서드별로 분리**돼 있어요 — 백엔드 `SecurityConfig`가 `/api/admin/apps/*/content/**` 에 아래 순서(구체→일반)로 매처를 걸어요.
+
+| 메서드 | 권한 |
+|---|---|
+| `DELETE` | `PERM_CONTENT_DELETE` |
+| `POST` · `PUT` (작성·수정·모더레이션·복원) | `PERM_CONTENT_MODERATE` |
+| `GET` | `PERM_CONTENT_READ` |
+
+프론트는 `NAV_PERM['/content']` 를 `read=PERM_CONTENT_READ` · `write=PERM_CONTENT_MODERATE` 로 걸어 작성/수정 버튼을 숨기지만(`src/lib/rbac.ts`), 최종 강제는 백엔드예요. `PERM_CONTENT_WRITE` 는 폐기된 권한이에요(마이그레이션 `V008` 에서 `CONTENT_MODERATE`/`CONTENT_DELETE` 로 분리, `V009` 에서 제거).
 
 ### 본문 계약 — markdown + `attachment://`
 
@@ -662,7 +692,7 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ### [40] `PUT /api/admin/apps/{slug}/content/{id}`
 
-게시물 수정 — `board`/`title`/`body`/`properties`를 교체하고 첨부를 재연관해요. **작성자(`authorType`/`authoredBy`)·상태는 불변**이에요. 클라이언트 함수는 `updatePost`. 권한은 §39와 동일하게 `PERM_CONTENT_WRITE`(PUT matcher).
+게시물 수정 — `board`/`title`/`body`/`properties`를 교체하고 첨부를 재연관해요. **작성자(`authorType`/`authoredBy`)·상태는 불변**이에요. 클라이언트 함수는 `updatePost`. 권한은 §39와 동일하게 `PERM_CONTENT_MODERATE`(PUT matcher).
 
 - **Request body**: §39와 동일(`AdminPostWriteBody`). `attachmentIds`는 **전체 재전송**이에요 — 이미 이 게시물에 연관된 id 는 멱등 통과, 새 선업로드 id 만 연관 확정돼요.
 - **Response**: 갱신된 `AdminPostDetail`
@@ -693,9 +723,126 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ---
 
+## 앱 버전 관리 (강제 업데이트)
+
+**앱-스코프**예요 — 사이드바에서 앱을 선택하면 나타나는 앱별 메뉴(사용자·파일 등과 동일 패턴)로, `{slug}` path 변수로 해당 앱만 조회·교체해요. 콘솔 자신의 admin 스키마 `app_min_versions` 테이블에서 `slug` 컬럼으로 좁혀요. "앱 버전" 화면(`/app-versions`, 앱 선택 시 노출)이 써요. 플랫폼은 **iOS·Android 2개만**(전역 `ALL` 없음) — 앱당 고정 2행이라 우선순위 해석·dedup 검증이 구조적으로 불필요해요. **2단계**(강제/경고) 임계값 — `forceMinVersion`·`warnMinVersion` 모두 nullable이라 정책 없음(둘 다 비움)도 허용해요.
+
+### [44] `GET /api/admin/apps/{slug}/app-versions`
+
+해당 앱의 iOS/Android 최소버전(강제 업데이트) 규칙(최대 2행, 플랫폼 순 정렬). 권한 `PERM_APPS_READ`. 클라이언트 함수는 `getAppVersions(slug)`.
+
+- **Response**: `AppVersionRule[]` — `slug` 는 path 로만 특정되므로 이 타입엔 없어요.
+  ```ts
+  interface AppVersionRule {
+    platform: 'IOS' | 'ANDROID'
+    enabled: boolean                // 이 플랫폼 규칙 사용 여부 — 화면이 Switch 로 편집해 PUT 으로 전송해요
+    forceMinVersion: string | null  // "x.y.z" — major.minor.patch 형식만 파싱해요(빌드/프리릴리스 접미사 무시). null=강제 정책 없음
+    warnMinVersion: string | null   // 위와 동일 형식. null=경고 정책 없음
+    storeUrl?: string | null   // optional — 강제/경고 화면에서 스토어 딥링크로 쓰여요
+    message?: string | null    // optional — 안내 메시지 override(비면 기본 문구)
+  }
+  ```
+
+### [45] `PUT /api/admin/apps/{slug}/app-versions`
+
+해당 앱 몫만 **통째 교체**(부분 PATCH 아님) — §38 역할×권한 매트릭스 PUT과 동일 패턴이에요. 다른 슬러그의 행은 건드리지 않아요. 권한 `PERM_APP_VERSION_WRITE`(기본 grant는 `master`만이고, 고정 코드가 아니라 §37~§38 역할×권한 매트릭스로 다른 역할에도 부여할 수 있는 **DOMAIN** 권한이에요 — 고임팩트라 기본은 좁게 시작). 클라이언트 함수는 `putAppVersions(slug, rows)`.
+
+- **Request body**: `{ rules: AppVersionRule[] }`
+- **Response**: 교체 후 이 앱의 전체 목록 `AppVersionRule[]`(§44와 동일 shape)
+- **검증(서버, 화이트리스트 선거부)**: `slug`가 등록된 슬러그인지, `platform ∈ {IOS, ANDROID}`인지, `forceMinVersion`·`warnMinVersion`이 각각 값이 있을 때 `x.y.z`로 파싱 가능한지, **둘 다 있으면 `forceMinVersion ≤ warnMinVersion`**인지 — 하나라도 실패하면 `422 CMN_001`. 전 건 검증을 통과해야 트랜잭션 1개로 replace 돼요(부분 실패 없음). `(slug, platform)` 중복 방지는 DB 유니크 제약에 위임(앱당 고정 2행이라 UI 가 같은 platform 을 두 번 보낼 여지가 구조적으로 없어요).
+- **캐시**: 저장 성공 시 서버 캐시(`DbAppVersionResolver`, TTL 30초)를 즉시 evict해서 다음 요청부터 곧바로 반영돼요.
+- **프론트 게이팅**: `rbac.ts`의 `NAV_PERM['/app-versions']`는 read=`PERM_APP_VERSION_READ`, write=`PERM_APP_VERSION_WRITE`로 **분리**돼 있어요 — 읽기 권한만 있는 역할(mock 기본 grant 의 admin)은 화면을 보되 사용 토글·저장 버튼이 잠겨요. 두 권한 모두 없으면 메뉴 자체가 안 보여요.
+- **미리보기**: 화면은 저장 전에도 입력(message·forceMinVersion·warnMinVersion·storeUrl)을 실시간 반영해요 — 두 사용자 화면(강제=닫을 수 없는 차단 다이얼로그 / 경고=닫을 수 있는 안내)을 **세그먼트 탭**으로 직접 골라 봐요. API 계약과는 무관한 순수 프론트 UX예요.
+
+### 시맨틱 — 실제 게이트
+
+- 클라이언트 버전 < `forceMinVersion`(설정 시) → 강제(닫을 수 없는 차단). 서버 API 는 426.
+- `forceMinVersion` ≤ 클라이언트 버전 < `warnMinVersion`(설정 시) → 경고(닫을 수 있는 안내). 서버 API 는 정상 통과.
+- 그 외(클라이언트 버전 ≥ `warnMinVersion`, 또는 둘 다 미설정) → 아무것도 안 함.
+- 이 화면·API는 규칙을 **관리**할 뿐이에요 — 실제로 게이트를 거는 건 앱 API 쪽이에요: `MinAppVersionFilter`(`X-App-Platform` 헤더 + `426 CMN_010`, 강제만 426)와, 앱 스플래시가 능동 조회하는 공개 엔드포인트 `GET /api/apps/{slug}/app-version`. 두 경로 다 `template-spring`의 Flutter↔Backend 통합 문서가 정본이에요.
+
+---
+
+## 스키마 조회 (ERD 콘솔)
+
+**앱-스코프**예요 — 사이드바에서 앱을 선택하면 나타나는 앱별 메뉴(`/schema`, 사용자·파일 등과 동일 패턴)로, `{slug}` path 변수로 해당 앱의 스키마만 조회해요. ERD 콘솔 Phase 1(읽기 전용 스키마 뷰어)이 써요 — 테이블·컬럼·FK·인덱스를 시각화만 할 뿐 DDL 은 실행하지 않아요(Flyway 가 진실의 원천).
+
+### [46] `GET /api/admin/apps/{slug}/schema`
+
+해당 앱 스키마의 테이블·컬럼·FK·인덱스 전체 스냅샷(`information_schema`/`pg_indexes` 기반). 권한 `PERM_SCHEMA_READ`. 클라이언트 함수는 `getAppSchema(slug)`.
+
+- **Response**: `SchemaResponse`
+  ```ts
+  interface SchemaResponse {
+    tables: SchemaTable[]
+  }
+  interface SchemaTable {
+    name: string
+    comment: string | null
+    columns: SchemaColumn[]
+    foreignKeys: SchemaForeignKey[]
+    indexes: SchemaIndex[]
+  }
+  interface SchemaColumn {
+    name: string
+    type: string              // information_schema.columns 를 사람이 읽기 쉬운 문자열로 합성한 값(예: character varying(50))
+    nullable: boolean
+    defaultValue: string | null
+    primaryKey: boolean
+    comment: string | null
+  }
+  interface SchemaForeignKey {
+    column: string             // 이 테이블의 컬럼 → refTable.refColumn
+    refTable: string
+    refColumn: string
+    onDelete: string
+  }
+  interface SchemaIndex {
+    name: string
+    columns: string[]          // 단일/복합 컬럼 모두 표현
+    unique: boolean
+  }
+  ```
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`. 빈 스키마는 에러가 아니라 `tables: []`. 권한 없음(`PERM_SCHEMA_READ` 부재) → `403 CMN_005`.
+- **읽기전용**: UI 는 이 응답을 시각화만 할 뿐 DDL 을 실행하지 않아요 — 쓰기(PUT/POST/DELETE) 엔드포인트가 없어요.
+
+### [47] `POST /api/admin/analytics/rollup`
+
+오늘 발생분 제품 이벤트를 `analytics_daily` 로 즉시 집계하는 온디맨드 롤업이에요(평소엔 매일 새벽 자동 집계 — 하루 지연을 없애는 디버깅·검증용). 권한 `PERM_ANALYTICS_ROLLUP`(쓰기 작업 전용, `PERM_ANALYTICS_READ` 의존 — 기본 grant 는 admin·master). 클라이언트 함수는 `rollupAnalytics(opts)`, 이벤트 분석 화면의 "지금 집계" 버튼이 호출해요.
+
+- **Query**: `slug?`(생략 시 전 앱 집계)
+- **Response**: `AnalyticsRollup`
+  ```ts
+  interface AnalyticsRollup {
+    slugs: number              // 집계된 앱 수
+    eventNames: number         // 반영된 이벤트 이름 수
+    aggregatedThrough: string  // 집계 반영 시점(ISO)
+  }
+  ```
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`. 권한 없음 → `403 CMN_005`.
+
+### [48] `GET /api/admin/apps/{slug}/ops/renewal-failures`
+
+운영 신호의 "갱신 실패 (7일)" 드릴다운 — `subscription_renewals` 중 최근 7일 status≠SUCCESS(FAILED=재시도 대기, ABANDONED=재시도 소진) 건을 최신순으로 줘요. 구독자 이메일(결제 PII)이 실려 **권한 `PERM_PAYMENTS_READ`**(운영신호 카드의 APPS_READ 보다 강함 — 매출분석 최근거래와 같은 논리). 클라이언트 함수 `getRenewalFailures(slug)`, 앱 개요의 갱신 실패 카드 클릭이 호출해요.
+
+- **Response**: `RenewalFailure[]` — `{ id, subscriptionId, userEmail, attemptNo, status, attemptedAt, nextRetryAt, errorCode, errorMessage }` (최근 100건 — 초과분 총계는 운영신호 카드 숫자가 기준)
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`. 권한 없음 → `403 CMN_005`.
+
+### [49] `GET /api/admin/apps/{slug}/ops/webhooks`
+
+운영 신호의 웹훅 드릴다운 — `payment_webhook_events` 를 `status=pending`(미처리) / `failed`(처리 실패)로 나눠 최신순으로 줘요. payload(JSONB)는 민감할 수 있어 **미노출** — 메타만. 권한 `PERM_APPS_READ`. 클라이언트 함수 `getOpsWebhooks(slug, status)`.
+
+- **Query**: `status`(필수) — `pending` | `failed`
+- **Response**: `WebhookEvent[]` — `{ id, source, externalId, receivedAt, processedAt, processError }` (최근 100건)
+- **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`. status 미상 값 → `422 CMN_001`. 권한 없음 → `403 CMN_005`.
+
+---
+
 ## 발송(메시징) — ⚠ mock 전용 (백엔드 미구현)
 
-발송 화면(`/send`)은 아래 6개 엔드포인트에 **실제로 배선**돼 있지만, `template-spring`엔 아직 대응 컨트롤러가 없어요 — **mock(MSW)에서만 동작**하고, 실서버 모드에선 404가 나요. 백엔드 구현이 따라오면 이 절이 §42+ 로 승격될 예정이에요. 그때까지는 계약(경로·DTO)이 mock 쪽 단독 정의라는 걸 감안하고 보세요.
+발송 화면(`/send`)은 아래 6개 엔드포인트에 **실제로 배선**돼 있지만, `template-spring`엔 아직 대응 컨트롤러가 없어요 — **mock(MSW)에서만 동작**하고, 실서버 모드에선 404가 나요. 백엔드 구현이 따라오면 이 절이 §50+ 로 승격될 예정이에요. 그때까지는 계약(경로·DTO)이 mock 쪽 단독 정의라는 걸 감안하고 보세요.
+
+**권한**: 채널별 — `PERM_SEND_SMS`·`PERM_SEND_EMAIL`·`PERM_SEND_PUSH`(백엔드 V012 가 구 `PERM_SEND` 를 폐기·승계). 하나라도 있으면 화면 진입, 채널 탭·이력 채널 필터는 보유 채널만 노출돼요.
 
 | # | 엔드포인트 | 클라이언트 함수 | 용도 |
 |---|---|---|---|
@@ -724,12 +871,12 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 
 ## 에러 코드
 
-### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_023`
+### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_025`
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
 | `ADMIN_001` | 401 | `INVALID_CREDENTIALS` | 이메일 또는 비밀번호가 올바르지 않아요 (로그인 실패) |
-| `ADMIN_002` | 400 | `UNSUPPORTED_METRIC` | `analytics/{metric}`의 `metric`이 `dau`/`signups`/`revenue` 중 하나가 아님 |
+| `ADMIN_002` | 400 | `UNSUPPORTED_METRIC` | `analytics/{metric}`의 `metric`이 지원 목록(`dau`/`signups`/`revenue`/`refunds`/`net`/`failures`)에 없음 |
 | `ADMIN_003` | 404 | `UNKNOWN_SLUG` | 슬러그를 찾을 수 없음 — 슬러그를 받는 **모든** admin 엔드포인트 공통 |
 | `ADMIN_004` | 400 | `INVALID_DATE_RANGE` | `from`/`to`가 ISO-8601 형식이 아님 (billing/audit-logs/analytics) |
 | `ADMIN_005` | 404 | `USER_NOT_FOUND` | 사용자 상세/조회 시 해당 `userId` 없음 |
@@ -751,6 +898,8 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 | `ADMIN_021` | 400 | `ADMIN_REFUND_NOT_ALLOWED` | 환불 불가 상태(이미 전액 환불됐거나 `PAID`/`PARTIALLY_REFUNDED` 아님) |
 | `ADMIN_022` | 404 | `ADMIN_CONTENT_NOT_FOUND` | `/content/{id}` 모더레이션 대상 게시물 없음 |
 | `ADMIN_023` | 400 | `ATTACHMENT_ASSOCIATION_FAILED` | 작성/수정(§39~§40) 시 `attachmentIds` 연관 확정 실패 — 첨부 부재·slug 불일치·비 ACTIVE·이미 타 게시물에 연관(탈취 시도) |
+| `ADMIN_024` | 400 | `USER_ALREADY_DELETED` | 이미 탈퇴 처리된 사용자를 다시 삭제 시도(§43) |
+| `ADMIN_025` | 410 | `USER_ERASED` | 유예 만료로 이미 완전삭제(익명화)된 사용자의 export·삭제 시도(§42~§43) |
 
 ### 공통 (`CommonError`, `common-web`)
 

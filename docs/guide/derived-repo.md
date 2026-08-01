@@ -82,7 +82,7 @@ export const PRIMARY = brand[600]   // 버튼·링크·활성상태 전부 이 �
 export const NAV_ITEMS: NavItem[] = [
   // group = 사이드바 그룹 헤더('공통'/'앱별'/'템플릿'), scope = 노출 조건('global'=항상, 'app'=앱 선택 시만)
   { path: '/', label: '대시보드', icon: <DashboardOutlined />, element: <DashboardPage />, scope: 'global', group: '공통' },
-  { path: '/apps', label: '매출 분석', icon: <AppstoreOutlined />, element: <AppsPage />, scope: 'global', group: '공통' },
+  { path: '/apps', label: '서비스 현황', icon: <AppstoreOutlined />, element: <AppsPage />, scope: 'global', group: '공통' },
   { path: '/apps/:slug', element: <AppDetailPage /> },  // label 없음 = 메뉴엔 안 뜨고 라우트만
   { path: '/users', label: '사용자', icon: <TeamOutlined />, element: <UsersPage />, scope: 'app', group: '앱별' },
   // … 이 앱에 필요 없는 화면은 통째로 줄 삭제
