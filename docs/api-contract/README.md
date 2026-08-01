@@ -27,7 +27,7 @@
 | Mock 구현 (개발용) | `src/mocks/handlers.ts`, `src/mocks/fixtures.ts` |
 | 백엔드 컨트롤러 | `template-spring`의 `core/core-admin-impl/.../controller/` |
 | 백엔드 에러 코드 | `AdminError.java`(`ADMIN_001`~`ADMIN_023` — 현행 전체 표는 [`admin-api.md`](./admin-api.md) "에러 코드" 절), `CommonError.java`(`CMN_004`/`CMN_005`/`CMN_006`) |
-| 설계 스펙 원문 | `template-spring` 저장소의 `docs/superpowers/specs/2026-07-06-admin-module-design.md` |
+| 설계 스펙 원문 | `template-spring` 의 내부 설계문서 (gitignore — 저장소를 클론한 로컬에서만 열람) |
 
 `src/lib/types.ts`의 인터페이스가 **프론트 쪽 계약의 진실**이에요 — mock과 실서버가 같은 타입을 공유해서 스키마 드리프트가 안 나요(`CLAUDE.md` §3 참고).
 
@@ -64,4 +64,4 @@
 - [`admin-api.md`](./admin-api.md) — 엔드포인트 전체 계약
 - [`../guide/screens.md`](../guide/screens.md) — 화면이 각 엔드포인트를 어떻게 쓰는지
 - [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring)
-- 설계 스펙: [`template-spring`의 `docs/superpowers/specs/2026-07-06-admin-module-design.md`](https://github.com/storkspear/template-spring/blob/main/docs/superpowers/specs/2026-07-06-admin-module-design.md) (`main` 병합 완료)
+- 설계 스펙: `template-spring` 의 내부 설계문서 — gitignore 라 GitHub 에 공개돼 있지 않아요. 저장소를 클론한 로컬에서 `docs/superpowers/specs/` 를 보세요 (구현은 `main` 병합 완료).
