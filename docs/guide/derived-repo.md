@@ -22,6 +22,18 @@ git clone git@github.com:<org>/<your-admin>.git && cd <your-admin>
 홈서버(Mac mini)에 관리자 콘솔 dev 를 정적 배포하는 한 방 명령이에요 (`tools/deploy-dev.sh`).
 
 1. `.env` 의 "dev 배포" 절 키를 채워요: `BASE_DOMAIN` · `DEPLOY_HOST`(Tailscale IP 권장) · `DEPLOY_SSH_USER` · `CLOUDFLARE_API_TOKEN` (+ 선택: `ADMIN_SUBDOMAIN`(기본 dev-admin) · `BACKEND_SUBDOMAIN`(기본 dev-server) · `VITE_USE_MOCK`)
+
+   여기에 더해 **사전 조건 두 개**가 있어요. 둘 다 도그푸딩에서 실제로 걸려 배포가 멈췄던 것들이에요.
+
+   - **배포 키 pin** — `.env` 에 `SSH_KEY=~/.ssh/deploy_key`(경로) 또는 `SSH_PRIVATE_KEY`(PEM 본문)
+     중 하나를 넣어요. 없으면 ssh 가 로컬 `~/.ssh` 와 ssh-agent 의 무관한 키를 순서대로 들이밀다
+     서버 `MaxAuthTries`(기본 6)를 넘겨 `Too many authentication failures` 로 끊겨요. GitHub 용
+     키가 몇 개만 깔려 있어도 배포 키가 시도되기 전에 거부돼요.
+   - **nginx 조작 권한** — nginx 를 root 로 돌리는 호스트(brew 를 sudo 로 설치한 경우 등)에서는
+     배포 계정이 conf 쓰기 · `nginx -t`(pid 파일 읽기) · `nginx -s reload`(root master 에 시그널)
+     를 **모두** 못 해요. `.env` 에 `NGINX_SUDO=1` 을 넣고 nginx 바이너리에 한정한 무암호 sudoers
+     규칙을 한 번 등록하거나, nginx 를 배포 계정 소유로 전환해요. `dev deploy` 가 막힌 항목을
+     이름으로 나열하고 두 방법을 다 알려줘요 — conf 디렉토리 권한만 여는 걸로는 부족해요.
 2. `<repo> dev deploy` — 빌드 → rsync → **nginx server block 생성**(SPA fallback + same-origin `/api` 를 로컬 kamal-proxy 로 Host 리라이트 프록시 — CORS 불필요) → **Cloudflare DNS·터널 ingress 등록**(멱등) → 헬스체크까지 한 번에.
 3. **mock ↔ 실서버 전환**: `.env` 의 `VITE_USE_MOCK` 만 바꾸고 같은 명령 재실행 — Vite 는 빌드타임 주입이라 재빌드+재배포가 정석이에요.
 4. `<repo> dev clear` — 정확한 역방향(ingress·DNS·nginx block·산출물 제거). 같은 서버의 다른 정적 사이트와 cloudflared 데몬은 절대 건드리지 않아요.
