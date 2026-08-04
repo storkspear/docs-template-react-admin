@@ -40,7 +40,7 @@
 1. 백엔드의 `AdminError.java`·컨트롤러 응답 DTO 수정
 2. 프론트의 `src/lib/types.ts`·`src/api/client.ts` **동시** 수정, `src/mocks/handlers.ts`/`fixtures.ts`도 같이 갱신(mock이 실 계약을 그대로 반영해야 하므로)
 3. 두 레포에 **같은 커밋 메시지**로 PR
-4. `npm run build`(`tsc -b`)가 타입 불일치를 잡아줘요. 런타임 계약 검증(mock ↔ 실서버 응답 shape 비교)은 아직 자동화가 없어요 — `VITE_USE_MOCK=false`로 붙여서 수동 확인하세요.
+4. `npm run build`(`tsc -b`)가 타입 불일치를 잡아줘요. `npm test`(화면 스모크)는 `src/mocks/handlers.ts` 를 `msw/node` 로 그대로 재사용해 렌더 회귀만 막아요 — mock ↔ 실서버 응답 shape 대조는 여전히 자동화가 없으니 `VITE_USE_MOCK=false`로 붙여서 수동 확인하세요.
 
 ### 프론트 변경 시
 
@@ -54,7 +54,7 @@
 - [ ] 양쪽 레포의 DTO/타입 파일 수정 확인 (`types.ts` ↔ 백엔드 `dto` 패키지)
 - [ ] `src/mocks/fixtures.ts`가 새 필드를 반영하는지(안 하면 mock 모드에서만 조용히 undefined)
 - [ ] 기존 화면 호환 (하위 호환 필드 추가 우선)
-- [ ] `npm run build` 그린
+- [ ] `npm run build` · `npm test` 그린
 - [ ] 문서 업데이트 (이 폴더)
 
 ---
