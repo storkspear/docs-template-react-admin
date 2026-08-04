@@ -134,7 +134,7 @@ VITE_PROXY_TARGET_DEV=https://api-dev.example.com
 - [ ] `src/lib/types.ts`의 DTO가 실제 백엔드 응답 필드와 1:1인지 (`docs/api-contract/admin-api.md` 대조)
 - [ ] `src/mocks/fixtures.ts`의 슬러그(`tradelog`/`gymlog`/`moodlog`)는 데모용 — 실서버 전환 후엔 무시되니 그대로 둬도 무방하지만, 로컬 mock 데모용 문구는 이 앱 도메인에 맞게 바꿔도 좋아요
 - [ ] 로그인 자격증명이 실서버 admin 계정으로 바뀌었는지 (mock 전용 데모 계정 `master@example.com`/`password` — 이메일 프리픽스 `viewer@`/`support@`/`admin@`/`master@`로 역할이 결정되는 규칙 포함 — 안내 문구는 `USE_MOCK`일 때만 노출되니 신경 안 써도 됨 — `LoginPage.tsx` 참고)
-- [ ] `npm run build` 그린
+- [ ] `npm run build` · `npm test` 그린
 
 ---
 
@@ -218,7 +218,7 @@ export default function XxxPage() {
 
 1. `src/nav.tsx`의 `NAV_ITEMS`에 **한 줄** 추가: `{ path: '/xxx', label: '…', icon: <…/>, element: <XxxPage /> }`
 2. 새 엔드포인트가 필요하면 `src/lib/types.ts`(DTO)·`src/api/client.ts`(함수)·`src/mocks/handlers.ts`+`fixtures.ts`(mock) 세 곳 동기화 — 실서버 계약은 `docs/api-contract/admin-api.md`와 대조
-3. `npm run build` 그린 확인
+3. `npm run build` · `npm test` 그린 확인
 
 ---
 
@@ -230,7 +230,7 @@ export default function XxxPage() {
 - [ ] `src/mocks/` — 데모 데이터를 이 앱 도메인으로 교체 (또는 실서버 전환으로 무시)
 - [ ] `src/api/client.ts` / `src/lib/types.ts` — 백엔드 계약과 1:1 확인 (`docs/api-contract/admin-api.md`)
 - [ ] `.env` — `VITE_PROXY_TARGET`(/`_DEV`) 설정, `<repo명> local start`로 자동 mock↔실서버 전환 확인
-- [ ] `npm run build` 그린
+- [ ] `npm run build` · `npm test` 그린
 
 ---
 

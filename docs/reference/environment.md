@@ -35,7 +35,7 @@ antd 5 시절 코드를 가져올 때 이 표를 기준으로 보면 돼요.
 | antd 5 | antd 6 | 상태 |
 |---|---|---|
 | `Modal` `styles.content` | `styles.container` | **필수** — semantic 키에 `content` 가 없어요 |
-| `Divider` `orientation="left\|right\|center"` | `titlePlacement` | **의미 변경 주의** — `orientation` 은 남아 있지만 이제 축(`horizontal\|vertical`)을 뜻해요 |
+| `Divider` `orientation="left\|right\|center"` | `titlePlacement` | **의미 변경 주의** — `orientation` 은 남아 있지만 이제 축(`horizontal\|vertical`)을 뜻해요. 값도 `start`/`end` 가 정본이고 `left`/`right` 는 RTL 보정을 거치는 별칭이에요 |
 | `Divider` `type` | `orientation` | deprecated |
 | `Space` `direction` | `orientation` | deprecated |
 | `Tag` `bordered={false}` | `variant="filled"` | deprecated (아직 동작) |
@@ -43,21 +43,24 @@ antd 5 시절 코드를 가져올 때 이 표를 기준으로 보면 돼요.
 | `antd/es/table` 의 `ColumnsType` | `antd` 의 `TableColumnsType` | 내부 경로 import 회피 |
 | `Alert` `message` | `title` | deprecated |
 | `Modal` `maskClosable` | `mask={{ closable: true }}` | deprecated |
-| `Divider` `type="vertical"` | `orientation="vertical"` | deprecated |
+| `Divider` `orientationMargin` | `styles.content.margin` | deprecated |
+| `Drawer` `width` · `height` | `size` | deprecated (아직 동작). 숫자·CSS 길이·`'100%'` 모두 그대로 받아요 |
+| `Drawer` `styles.content` | `styles.section` | **필수** — `content` 는 deprecated 이고 DOM 에 적용되지 않아요 |
 
-> deprecated prop 은 타입 검사로는 안 걸리고 **런타임 콘솔 경고**로만 드러나요. 화면을 실제로 띄워
-> 콘솔을 봐야 전부 찾을 수 있어요 — 위 표의 마지막 3종이 그렇게 나온 것들이에요.
+> deprecated prop 은 타입 검사로 안 걸리고 **렌더 시점 `console.error`** 로만 드러나요.
+> `npm test`(화면 스모크)가 렌더 중 콘솔을 가로채 `deprecated` 문자열을 실패로 처리해요
+> (`src/test/screens.smoke.test.tsx:93-102`). 다만 스모크가 **렌더한 화면만** 볼 수 있으니,
+> 오류 상태 전용 컴포넌트처럼 mock 성공 경로에서 안 그려지는 곳은 여전히 수동 확인이 필요해요.
 
 **바꾸지 않아도 되는 것** — antd 6 에서도 그대로 유효한 API 예요.
 
 | API | 확인 결과 |
 |---|---|
-| `Descriptions.Item` children | deprecated 아님. `items` prop 과 **둘 다 유효**해요 (22곳에서 계속 써요) |
-| `Drawer` `styles.content` | semantic 키에 `content` 와 `section` 이 **둘 다** 있어요 |
+| `Descriptions.Item` children | deprecated 아님. `items` prop 과 **둘 다 유효**해요 |
 
 - **`@ant-design/v5-patch-for-react-19` 는 반드시 제거**해야 해요. antd 6 는 React 19 를 네이티브 지원하고, 패치가 남아 있으면 충돌해요.
 - `destroyOnHidden`(5.25 도입, `destroyOnClose` 의 후계)은 6 에서도 그대로예요 — `MediaModal` · `FileDetailDrawer` · `UserDetailDrawer` · `useReasonModal` · `ContentComposePage` · `RolesPage` 가 쓰고 있어요.
-- `ConfigProvider` 가 8중첩이라 부분 테마 누락 시 팝업 배경이 새어 보이지 않는 문제가 있어요 — `src/lib/theme.ts` 주석 참고.
+- `ConfigProvider` 를 10곳에서 쓰고 최대 3단까지 중첩돼요. 하위 `ConfigProvider` 에 테마를 안 넘기면 팝업 배경이 상위 무드를 못 따라가요.
 
 ### CSS 리셋
 
