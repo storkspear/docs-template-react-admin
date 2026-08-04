@@ -6,15 +6,15 @@
 
 | 이름 | 버전 | 용도 |
 |---|---|---|
-| React | ^19.2 | UI 라이브러리 — antd 6 가 React 19 를 네이티브 지원해서 `@ant-design/v5-patch-for-react-19` 는 제거했어요 |
-| TypeScript | ~7.0 | 언어 — **strict 모드** (`tsconfig.app.json`). 7.x 는 네이티브 포트라 `tsc -b` 가 체감 6배 빨라요 (3.6s → 0.6s) |
+| React | ^19.2 | UI 라이브러리 — antd 6 가 React 19 를 네이티브 지원해요. `@ant-design/v5-patch-for-react-19` 는 이 레포에 없어요 |
+| TypeScript | ~7.0 | 언어 — **strict 모드** (`tsconfig.app.json`). 7.x 는 네이티브 포트라 `tsc -b` 가 1초 안에 돌아요 |
 | Vite | ^8.1 | 빌드 · dev 서버 (`npm run dev` → :5173) |
 
 ### `skipLibCheck: true` 를 끄지 마세요
 
 `tsconfig.app.json` · `tsconfig.node.json` 양쪽에 켜져 있어요. 끄면 antd 6 의 하위 의존
 (`@rc-component/select` · `picker` · `image`)에서 `.d.ts` 오류 4건이 나와요 — 우리 코드가 아니라
-업스트림 타입 정의 문제라 우리 쪽에서 고칠 수 없어요. TypeScript 7 로 올릴 때 확인한 사항이에요.
+업스트림 타입 정의 문제라 우리 쪽에서 고칠 수 없어요.
 
 ## UI
 
@@ -27,10 +27,10 @@
 | dayjs | ^1.11 | 날짜 포맷 |
 | 자체 차트 | — | `MiniBarChart` · `MiniPieChart` · `Sparkline` · `StackedBarChart` (외부 차트 라이브러리 없음) |
 
-### antd 6 이관 메모 (2026-08)
+### antd 5 코드를 가져올 때 — antd 6 이관 기준표
 
-antd 5 → 6 에서 실제로 바뀐 지점이에요. **antd 6.5.3 의 타입 정의를 직접 확인한 결과**라, 파생 레포에서
-antd 5 시절 코드를 가져올 때 이 표를 기준으로 보면 돼요.
+파생 레포에서 antd 5 시절 코드를 가져올 때 이 표를 기준으로 보면 돼요. antd 5 → 6 에서
+실제로 바뀐 지점을 **antd 6.5.3 의 타입 정의로 직접 확인한 결과**예요.
 
 | antd 5 | antd 6 | 상태 |
 |---|---|---|
@@ -64,16 +64,16 @@ antd 5 시절 코드를 가져올 때 이 표를 기준으로 보면 돼요.
 
 ### CSS 리셋
 
-Tailwind 는 제거했어요 (실사용이 `MiniBarChart` 2줄뿐이라 4.x 메이저 이관보다 걷어내는 게 쌌어요).
-`@tailwind base` 가 넣어 주던 preflight 리셋은 `src/index.css` 상단의 `@import 'antd/dist/reset.css'` 가
-대신해요. `postcss` · `autoprefixer` 도 함께 제거했어요 (`postcss` 는 vite 8 의 직접 의존이라 트리에는 남아요).
+이 레포에는 Tailwind 가 없어요. preflight 리셋은 `src/index.css` 상단의
+`@import 'antd/dist/reset.css'` 가 담당해요. `postcss` · `autoprefixer` 도 직접 의존이 아니에요
+(`postcss` 는 vite 8 의 직접 의존이라 트리에는 남아요).
 
 ## 데이터
 
 | 이름 | 버전 | 용도 |
 |---|---|---|
 | TanStack Query | ^5.62 | 서버 상태 — 목록은 `useAdminList` 훅 |
-| react-router | ^8.3 | 라우팅 — `src/nav.tsx` 의 `NAV_ITEMS` 가 단일 소스. v8 부터 `react-router-dom` 이 `react-router` 로 통합됐어요 (`react-router-dom` 은 7.18.2 에서 정지) |
+| react-router | ^8.3 | 라우팅 — `src/nav.tsx` 의 `NAV_ITEMS` 가 단일 소스. import 는 `react-router` 패키지에서 해요 (`react-router-dom` 은 이 레포에 없어요) |
 | MSW | ^2.7 | mock — 전 화면이 백엔드 없이 동작, `VITE_USE_MOCK=false` 로 실서버 전환 |
 
 ## 개발 도구
