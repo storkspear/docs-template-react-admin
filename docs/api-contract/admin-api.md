@@ -90,23 +90,25 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 
 등록된 전체 앱(슬러그) 요약.
 
-- **Response**: `AppSummary[]`
+- **Response(실서버)**: `AppSummary[]` — 백엔드 `AppSummaryResponse` 는 **3필드가 전부**예요.
   ```ts
   interface AppSummary {
     slug: string
     userCount: number
     activeSubscriptions: number
-    revenue30d: number            // 최근 30일 결제 매출
-    iosVersion: string | null     // 스토어 배포 중인 현재 버전 — app_versions 최신 릴리스에서 유도
-    androidVersion: string | null
-    releasedAt: string | null     // 최초 출시일(YYYY-MM-DD) — 릴리스 이력에서 유도
-    lastUpdatedAt: string | null  // 최종 업데이트일
-    status: 'ok' | 'warn'         // 운영 상태 — 운영 신호에서 파생
-    issueLabel: string | null     // 이슈 요약 라벨(예: '갱신실패 2'). 없으면 null
+    // ↓ 여기부터는 mock 전용 확장 — 실서버 응답엔 **없어요**(전부 undefined)
+    revenue30d?: number | null        // 최근 30일 결제 매출
+    iosVersion?: string | null        // 스토어 배포 중인 현재 버전
+    androidVersion?: string | null
+    releasedAt?: string | null        // 최초 출시일(YYYY-MM-DD)
+    lastUpdatedAt?: string | null     // 최종 업데이트일
+    status?: 'ok' | 'warn' | null     // 운영 상태
+    issueLabel?: string | null        // 이슈 요약 라벨(예: '갱신실패 2')
   }
   ```
-- **데이터 소스**: 슬러그 열거 + 각 앱 스키마의 `users` count · `subscriptions`(ACTIVE) count · 최근 30일 `payment_history` 합산 · `app_versions` 최신 릴리스 · 운영 신호(갱신실패·웹훅)에서 `status`/`issueLabel` 파생.
-- **소비**: "서비스 현황"(`/apps`) 보드가 KPI·컬럼에서 전 필드를 써요.
+- **데이터 소스(실서버)**: 슬러그 열거 + 각 앱 스키마의 `users` count(`deleted_at IS NULL`) · `subscriptions`(ACTIVE) count. 그게 전부예요 — 매출·스토어 버전·출시일·운영 상태는 이 엔드포인트가 조회하지 않아요.
+- **소비**: "서비스 현황"(`/apps`) 보드. mock 전용 필드는 **없으면 미표시(—)** 로 그려요 — `status` 부재를 "정상"(초록)으로, `revenue30d` 부재를 `₩0`/`₩NaN` 으로 그리면 운영자가 이상 없음으로 오판해요. 매출은 매출 분석(§7 `billing`), 운영 상태는 앱별 운영 신호(§8 `ops`)가 실서버 소스예요.
+- **백엔드 확장 시**: 이 3필드는 React `AppSummary` 계약과 1:1(백엔드 DTO 주석에 "변경 금지")이라, 필드를 늘리려면 백엔드 DTO·이 문서·`src/lib/types.ts` 를 함께 고쳐야 해요.
 
 ### [4] `GET /api/admin/dashboard/metrics`
 
@@ -253,7 +255,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 
 ### [42] `GET /api/admin/apps/{slug}/users/{userId}/export` — GDPR 개인정보 export (v1.11)
 
-GDPR 열람권(Art.15) 대응 — 한 사용자의 연관 데이터를 **JSON 번들 1개**로 반환해요. **전 PII 원본**을 노출하므로 `PERM_USERS_UNMASK` 로 게이팅(READ 만으로는 403 `CMN_005`)하고, 발급 사실은 `user_read_history`에 `EXPORT`로 기록돼요. 첨부 **파일 실체는 미포함** — `attachments[].storageKey` 메타만 담고 개별 다운로드는 파일 화면(§19~§20)에서 해요. 클라이언트 함수는 `exportUser`. 프론트는 사용자 상세 드로어에서 "데이터 내보내기" 버튼(`PERM_USERS_UNMASK` 게이팅, reveal 버튼 선례)으로 호출해 응답을 `user-{id}-export.json` 파일로 내려받아요.
+GDPR 열람권(Art.15) 대응 — 한 사용자의 연관 데이터를 **JSON 번들 1개**로 반환해요. **전 PII 원본**을 노출하므로 `PERM_USERS_EXPORT` 로 게이팅(백엔드 `SecurityConfig` 가 export 패턴에 전용 매처를 걸어요 — UNMASK 와 별개 권한이고, READ 만으로는 403 `CMN_005`)하고, 발급 사실은 `user_read_history`에 `EXPORT`로 기록돼요. 첨부 **파일 실체는 미포함** — `attachments[].storageKey` 메타만 담고 개별 다운로드는 파일 화면(§19~§20)에서 해요. 클라이언트 함수는 `exportUser`. 프론트는 사용자 상세 드로어에서 "데이터 내보내기" 버튼(`PERM_USERS_EXPORT` 게이팅)으로 호출해 응답을 `user-{id}-export.json` 파일로 내려받아요.
 
 - **Response** (`AdminUserExportResponse`):
   ```ts
@@ -292,7 +294,9 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 관리자·시스템 액션 로그.
 
-- **Query**: `slug`(생략 가능 — 생략 시 전 슬러그 fan-out 병합), `actorEmail`, `action`, `result`(`SUCCESS`|`FAILURE`), `from`, `to`, `page`, `size`
+- **Query**: `slug`(생략 가능 — 생략 시 전 슬러그 fan-out 병합. 지정 시 정확 일치), `actorEmail`(관리자 이메일 부분일치, 대소문자 무시), `action`(액션명 부분일치, 대소문자 무시), `result`(`SUCCESS`|`FAILURE` — 정확 일치), `ipAddress`(호출자 IP 부분일치, 대소문자 무시 — `audit_logs.ip_address` 기준), `from`, `to`(`occurred_at` 기준 ISO-8601 범위, **양끝 포함**), `page`(기본 0), `size`(기본 20)
+- **필터 결합**: 값이 있는 파라미터만 WHERE 에 붙고 서로 AND 로 묶여요. 빈 문자열은 값이 없는 것과 같게 취급해요(필터 미적용).
+- **`ipAddress`**: `203.0.113.` 처럼 앞자리만 줘도 그 대역이 잡히는 부분일치예요(IPv4/IPv6 공용 문자열 컬럼이라 대소문자를 안 가려요). IP 가 기록되지 않은 로그(`ip_address` NULL)는 이 파라미터를 주는 순간 결과에서 빠져요.
 - **Response**: `PageResponse<AuditLog>`
   ```ts
   type AuditResult = 'SUCCESS' | 'FAILURE'
@@ -356,7 +360,9 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 앱 결제 내역 검색 + 페이지네이션 — "누가·언제·얼마"를 드릴다운으로 보는 화면(`/payments`)이 써요.
 
-- **Query**: `query`(사용자 이메일 ILIKE), `channel`(`PG`|`IAP`), `status`(`PAID`|`PARTIALLY_REFUNDED`|`REFUNDED`|`FAILED`|`READY`|`CANCELLED`), `type`(`SUBSCRIPTION`|`ONE_TIME`), `from`, `to`(ISO-8601, 생략 가능), `page`(기본 0), `size`(기본 20)
+- **Query**: `query`(사용자 이메일 부분일치, 대소문자 무시), `channel`(`PG`|`IAP` — 정확 일치), `status`(`PAID`|`PARTIALLY_REFUNDED`|`REFUNDED`|`FAILED`|`READY`|`CANCELLED` — 정확 일치), `type`(`SUBSCRIPTION`|`ONE_TIME` — 정확 일치), `from`, `to`(**결제일** `paid_at` 기준 ISO-8601 범위, **양끝 포함**, 생략 가능), `refundFrom`, `refundTo`(**환불일** `refunded_at` 기준 ISO-8601 범위, **양끝 포함**, 생략 가능), `page`(기본 0), `size`(기본 20)
+- **필터 결합**: 값이 있는 파라미터만 WHERE 에 붙고 서로 AND 로 묶여요. 결제일 범위와 환불일 범위는 서로 다른 컬럼을 보므로 둘을 함께 주면 "이 기간에 결제되고 저 기간에 환불된 건"으로 좁혀져요.
+- **`refundFrom`/`refundTo`**: 환불된 적 없는 결제는 `refunded_at` 이 NULL 이라, 둘 중 하나만 줘도 결과에서 빠져요("환불 건만 보기"가 자연히 따라와요). 부분환불을 여러 번 한 결제는 `payment_history.refunded_at`(마지막 환불 시각) 하나로 판정해요 — 건별 환불일로 보고 싶으면 원장(§18)이나 `refunds` 시계열(§13)을 쓰세요.
 - **Response**: `PageResponse<AdminPaymentListItem>`
   ```ts
   interface AdminPaymentListItem {
@@ -525,7 +531,10 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
 
 게시물 목록(전 상태) + 필터. 클라이언트 함수는 `getAppContent`.
 
-- **Query**: `board`, `status`(`ACTIVE`|`HIDDEN`|`DELETED`), `page`(기본 0), `size`(기본 20)
+- **Query**: `board`(게시판 코드 — 정확 일치, 대소문자 구분), `status`(`ACTIVE`|`HIDDEN`|`DELETED` — 대소문자는 안 가리고 해석하되, 그 셋에 없는 값이면 상태 필터 없이 전 상태를 돌려줘요), `serial`(일련번호 = `posts.id` **정확 일치**), `title`(제목 부분일치, 대소문자 무시), `author`(작성자 부분일치, 대소문자 무시), `page`(기본 0), `size`(기본 20)
+- **필터 결합**: 값이 있는 파라미터만 WHERE 에 붙고 서로 AND 로 묶여요. 정렬은 일련번호(`id`) 내림차순이에요.
+- **`serial`**: 부분일치가 아니라 그 번호의 글 1건만 찾는 정확 일치예요. 숫자로 못 읽는 값(`abc` 등)을 주면 일치할 글이 없으니 **빈 페이지**를 돌려줘요 — 필터를 무시하고 전체를 보여주면 운영자가 건 필터와 화면이 어긋나기 때문이에요.
+- **`author`**: 회원 글의 닉네임 스냅샷(`author_nickname`)과 운영 작성 글의 관리자 email(`authored_by`) **둘 중 하나만 걸려도** 매치돼요 — 작성자 표기에 쓰는 두 컬럼을 한 입력칸으로 함께 검색해요.
 - **Response**: `PageResponse<AdminPost>`
   ```ts
   type PostAuthorType = 'USER' | 'ADMIN'
