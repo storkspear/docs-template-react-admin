@@ -1,6 +1,6 @@
 # Environment — 프레임워크 · 라이브러리 인벤토리
 
-이 문서는 template-react-admin 이 쓰는 기술 스택을 버전과 함께 정리해요. 버전의 정본은 `package.json` 이고, 여기 값은 2026-08-01 기준이에요. 시각 요약판은 [`Environment UI`](./environment-ui.md) 에 있어요.
+이 문서는 template-react-admin 이 쓰는 기술 스택을 버전과 함께 정리해요. 버전의 정본은 `package.json` 이고, 여기 값은 2026-10-28 기준이에요. 시각 요약판은 [`Environment UI`](./environment-ui.md) 에 있어요.
 
 ## 코어
 
@@ -23,7 +23,10 @@
 | Ant Design (antd) | ^6.5 | 컴포넌트 — `ConfigProvider` 토큰은 `src/lib/theme.ts` (아래 각주) |
 | ag-grid-community / ag-grid-react | ^36.0 | 서버 페이지네이션 그리드 (Theming API) |
 | lucide-react | ^1.25 | 아이콘 — `src/lib/icons.tsx` 가 antd 아이콘 이름으로 재-export |
-| @xyflow/react | ^12.11 | ERD 콘솔(시스템 설계도) 그래프 — `SchemaPageLazy` 로 지연 로드 |
+| @xyflow/react · @dagrejs/dagre | ^12.11 · ^3.1 | ERD 콘솔(시스템 설계도) 그래프와 자동 배치 — `SchemaPageLazy` 로 지연 로드 |
+| @storkspear/post-editor-core · -react | ^0.5.7 | 게시물 편집기(작성·수정)와 본문 굽기(`toPublishedHtml`) — npm 공개 패키지, 두 개를 같은 판으로. `@tiptap/*` 3.31.3 은 이 패키지의 peer |
+| dompurify | ^3.4 | 게시물 HTML 본문 정화(`src/lib/sanitizeHtml.ts`) — 편집기가 이미 끌고 오던 것을 직접 의존으로 |
+| react-markdown · remark-gfm | ^10.1 · ^4.0 | 옛 markdown 게시물 렌더(`PostBody`) |
 | dayjs | ^1.11 | 날짜 포맷 |
 | 자체 차트 | — | `MiniBarChart` · `MiniPieChart` · `Sparkline` · `StackedBarChart` (외부 차트 라이브러리 없음) |
 

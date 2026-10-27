@@ -1,6 +1,6 @@
 # 화면 가이드
 
-`nav.tsx`(`NAV_ITEMS`)의 **사이드바 메뉴 화면 14개** + 헤더 계정 드롭다운으로 진입하는 설정(`/settings`) + 라벨 없이 라우트만 등록된 화면 6개(앱 상세 `/apps/:slug` · 매출 상세 `/insights/revenue` · 가입 상세 `/insights/signups` · 게시물 작성 `/content/new` · 게시물 상세 `/content/:id` · 전체 이벤트 `/analytics/events`)로 구성돼요. 각 화면이 무엇을 보여주는지, 어떤 API 를 쓰는지, 모바일에서 어떻게 달라지는지를 정리했어요.
+`nav.tsx`(`NAV_ITEMS`)의 **사이드바 메뉴 화면 14개** + 헤더 계정 드롭다운으로 진입하는 설정(`/settings`) + 라벨 없이 라우트만 등록된 화면 7개(앱 상세 `/apps/:slug` · 매출 상세 `/insights/revenue` · 가입 상세 `/insights/signups` · 게시물 작성 `/content/new` · 게시물 수정 `/content/:id/edit` · 게시물 상세 `/content/:id` · 전체 이벤트 `/analytics/events`)로 구성돼요. 각 화면이 무엇을 보여주는지, 어떤 API 를 쓰는지, 모바일에서 어떻게 달라지는지를 정리했어요.
 
 사이드바 메뉴는 세 **그룹**으로 나뉘어요(`nav.tsx`의 `group`/`scope` — § "공통 패턴" 참고):
 
@@ -108,16 +108,16 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 - **API**: `GET /apps/{slug}/users?query=&page=&size=`, `GET /apps/{slug}/users/{userId}` (드로어), `GET /apps/{slug}/users/{userId}/reveal` (원본 조회)
 - **모바일**: PC 는 필터가 그리드 위 인라인 바, 모바일은 제목 옆 "필터" 버튼 → 풀스크린 모달. 목록은 무한스크롤 + 카드 목록으로 전환(`useAdminList`가 PC=페이지네이션/모바일=무한스크롤 자동 분기).
 
-### 9. 게시물 (`/content`) + 게시물 상세 (`/content/:id`)
+### 9. 게시물 (`/content`) + 상세 (`/content/:id`) + 작성·수정 (`/content/new` · `/content/:id/edit`)
 
 선택된 앱의 **공유(공개) 게시물**을 전량 조회하고 숨김/삭제/복원하는 콘텐츠 모더레이션 화면이에요. 프라이빗 기록은 이 화면에 안 와요(공개 전용). 파일 화면과 동일한 모더레이션 UX(상태 태그·행 틴트·사유 모달·복원 컨펌)를 써요.
 
 - **목록**(`ContentPage`): 상태(공개/숨김/삭제)·게시판(board, 고정 목록)·일련번호·제목·작성자 5종 필터 + 숨김일시 컬럼 + `GridPage`+`AdminDataGrid`+`useAdminList` 표준 목록. 행 클릭 → 게시물 상세로 이동.
-- **상세**(`ContentDetailPage`, 메뉴 밖 라우트): **아티클 리더 레이아웃** — 모더레이터가 게시물을 실제 읽는 형태로 제목·작성자 바이라인 pill(아바타·이름·상대시간)·본문 전체·첨부이미지(파일 콘솔과 동일 원본, presigned URL)를 보고, 그 자리에서 숨김(사유)/삭제(사유)/복원/삭제 대상 복원을 실행해요.
-- **작성**(`ContentComposePage`, `/content/new`): 흰 종이 캔버스 에디터(Tiptap). **상단 sticky 바가 `[목록] · [카테고리 선택]` (좌) / `[폭 토글] [등록]` (우)** 구조예요 — 카테고리(board)는 글의 내용이 아니라 발행 설정이라 본문 캔버스에서 분리해 이 바에 뒀어요(`UnderlineSelect`, 고정 4종 + "카테고리 선택"으로 해제). 본문 캔버스는 제목 → 해시태그 → 에디터 순서로 글 자체에만 집중해요.
-- **본문 폭**(`usePaperWidth`): 작성 화면의 폭 토글(기본 760px ↔ 넓게)에서 정한 폭이 **글 속성 `properties.wide` 로 저장**되고, 상세(읽기)가 그 값으로 렌더해요 — **넓게 쓴 글은 넓게, 좁게 쓴 글은 좁게 읽혀요**. 상세엔 폭 토글을 두지 않아요(읽는 사람이 바꿀 값이 아니라 글의 속성이라서요). localStorage(`admin.composeWide`)는 "다음 새 글의 기본 폭"으로만 쓰여요.
+- **상세**(`ContentDetailPage`, 메뉴 밖 라우트): **아티클 리더 레이아웃** — 모더레이터가 게시물을 실제 읽는 형태로 제목(편집기가 그린 서식·배너 그대로)·작성자 바이라인 pill(아바타·이름·상대시간)·본문 전체·본문 밖 첨부(파일 콘솔과 동일 원본, presigned URL)를 보고, 그 자리에서 숨김(사유)/삭제(사유)/복원/삭제 대상 복원을 실행해요. HTML 본문은 `PostBody` 가 굽고(`toPublishedHtml`) **허용목록으로 거른 뒤**(`src/lib/sanitizeHtml.ts`) 그려요 — 회원 글도 같은 자리에서 그리기 때문이에요. 운영자가 쓴 HTML 글에는 「고치기」 단추가 떠요.
+- **작성·수정**(`ContentComposePage`, `/content/new` · `/content/:id/edit`): 흰 종이 캔버스 위에 편집기 라이브러리(`@storkspear/post-editor-react` 의 `PostEditor`)가 화면을 통째로 덮어요. **상단 sticky 바가 `[목록] · [카테고리 선택] · [#해시태그 칩]` (좌) / `[등록|수정]` (우)** 구조예요 — 카테고리·해시태그는 글의 내용이 아니라 발행 설정이라 본문 캔버스에서 분리해 이 바에 뒀어요(`UnderlineSelect`, 고정 4종 + "카테고리 선택"으로 해제). 제목의 서체·크기·정렬·색·배너와 본문 폭 토글은 편집기 툴바가 다뤄요. 수정은 같은 화면이 값이 채워진 채 열리는 것이고, **운영자가 쓴 HTML 글만** 열려요(markdown·평문·회원 글은 안내만 띄워요). 글을 못 불러오면 빈 편집기 대신 오류 안내를 띄우고 저장을 막아요. 사진은 올린 순간 `attachment://{id}` 참조로만 본문에 들어가요.
+- **본문 폭**: 편집기 툴바에서 정한 폭이 **글 속성 `properties.width` 로 저장**되고(옛 글의 `wide` 불리언도 읽어요), 상세(읽기)가 그 값으로 렌더해요 — **넓게 쓴 글은 넓게, 좁게 쓴 글은 좁게 읽혀요**. 상세엔 폭 토글을 두지 않아요(읽는 사람이 바꿀 값이 아니라 글의 속성이라서요).
 - **soft-delete**: 파일과 동일 — 삭제는 사유 필수 + 30일 후 purge, 그 전엔 복원 가능(`purgeAt` D-day).
-- **API**: `GET /apps/{slug}/content?board=&status=&page=&size=`, `GET .../content/{id}`, `POST .../content/{id}/hide|restore|restore-deleted`, `DELETE .../content/{id}`, `POST .../content`(작성, §39), `POST .../content/uploads`(이미지 선업로드, §41) (계약은 [`admin-api.md`](../api-contract/admin-api.md) §25~§30·§39·§41)
+- **API**: `GET /apps/{slug}/content?board=&status=&page=&size=`, `GET .../content/{id}`, `POST .../content/{id}/hide|restore|restore-deleted`, `DELETE .../content/{id}`, `POST .../content`(작성, §39), `PUT .../content/{id}`(수정, §40 — 첨부는 글이 가져야 할 전체 집합), `POST .../content/uploads`(이미지 선업로드, §41) (계약은 [`admin-api.md`](../api-contract/admin-api.md) §25~§30·§39~§41)
 - **권한**: 조회 `PERM_CONTENT_READ`, 작성·수정·공개·숨김·복원 `PERM_CONTENT_MODERATE`, 삭제 `PERM_CONTENT_DELETE`. 공개 게시물이라 작성자 마스킹은 없어요.
 - **모바일**: 목록은 무한스크롤 + 카드 목록, 상세는 세로 스택.
 
@@ -226,6 +226,7 @@ RBAC 운영 화면 — **(1) 역할×권한 매트릭스 편집**과 **(2) 관�
 | `/insights/signups` | `InsightDetailPage` | 대시보드 "전체 가입 추이" 드릴다운 — 날짜×앱 표 + 합계 + CSV |
 | `/content/:id` | `ContentDetailPage` | 위 "9. 게시물" 참고 |
 | `/content/new` | `ContentComposePage` | 위 "9. 게시물" 작성 항목 참고 — 목록 우상단 [작성하기]로 진입 |
+| `/content/:id/edit` | `ContentComposePage` | 같은 화면이 값이 채워진 채 열림 — 상세의 [고치기]로 진입(운영자 HTML 글만) |
 | `/analytics/events` | `AnalyticsEventsPage` | 위 "14. 이벤트 분석" 참고 |
 
 `/login`만 `App.tsx`에 별도 `<Route>`로 등록되고, 나머지는 전부 `nav.tsx`에 `label` 없이 등록돼요 — 사이드바 메뉴엔 안 뜨고 라우트만 잡혀요.
