@@ -45,7 +45,9 @@ env 파일만 다를 뿐(`dev` = `.env`, `prod` = `.env.prod`) 빌드·rsync·ng
      계정이 사실상 root 와 동등**해진다는 잔여위험을 알고 써요. `dev/prod deploy` 가 막힌 항목을
      이름으로 나열하고 이 안내를 띄워요.
 2. `<repo> dev deploy` / `<repo> prod deploy` — 빌드 → rsync → **nginx server block 생성**(SPA fallback + same-origin `/api` 를 로컬 kamal-proxy 로 Host 리라이트 프록시 — CORS 불필요) → **Cloudflare DNS·터널 ingress 등록**(멱등) → 헬스체크까지 한 번에. 두 target 은 서로 다른 FQDN·nginx server block·Cloudflare ingress 를 쓰므로 독립적으로 배포돼요(같은 Mac mini·같은 터널을 공유해도 서로 건드리지 않음).
-3. **mock ↔ 실서버 전환**: 해당 env 파일의 `VITE_USE_MOCK` 만 바꾸고 같은 명령 재실행 — Vite 는 빌드타임 주입이라 재빌드+재배포가 정석이에요.
+3. **mock ↔ 실서버 전환**: 해당 env 파일의 `VITE_USE_MOCK` 만 바꾸고 같은 명령 재실행 — Vite 는 빌드타임 주입이라 재빌드+재배포가 정석이에요. 빌드에 들어가는 `VITE_API_BASE` 도 그 env 파일이 정해요(없으면 빈값 = same-origin `/api`). Vite 는 mode 와 무관하게 레포의 `.env` 도 읽기 때문에, 스크립트가 셸 환경변수로 못 박아 prod 빌드에 로컬 값이 섞이지 않게 해요.
+   - **응답 헤더·캐시**: 생성되는 nginx server block 은 `Content-Security-Policy`·`X-Content-Type-Options: nosniff`·`X-Frame-Options: DENY`·`Referrer-Policy`·`Permissions-Policy` 를 `always` 로 붙여요(4xx·5xx 에도). `index.html` 과 MSW 워커는 `no-store`, 해시가 붙은 `/assets/` 는 `immutable` 1년이에요. CSP 기본값은 `tools/deploy.sh` 의 `DEFAULT_CSP`(자기 번들·jsDelivr 글꼴·presigned 미디어 `https:`·YouTube/draw.io 프레임)이고, 다른 출처를 열어야 하면 env 파일의 `NGINX_CSP` 로 통째 바꿔요.
+   - **헬스체크는 판정**이에요: SPA 셸(재시도 `HEALTH_TRIES`회)·CSP 헤더·실서버 빌드면 `/api/admin/health` 까지 확인하고, 하나라도 실패하면 종료 코드가 0 이 아니에요. mock 빌드에서 백엔드가 없는 것만 경고로 넘어가요.
 4. `<repo> dev clear` / `<repo> prod clear` — 정확한 역방향(ingress·DNS·nginx block·산출물 제거). 같은 서버의 다른 정적 사이트와 cloudflared 데몬, 그리고 반대쪽 target 은 절대 건드리지 않아요.
 
 ---
@@ -125,7 +127,7 @@ export const NAV_ITEMS: NavItem[] = [
 # .env (또는 .env.local)
 
 # 로컬 dev 서버에서 Vite 프록시가 /api 를 전달할 백엔드 주소
-VITE_PROXY_TARGET=http://localhost:8080
+VITE_PROXY_TARGET=http://localhost:8081
 
 # dev 환경 백엔드 (factory dev start 의 프로브 대상)
 VITE_PROXY_TARGET_DEV=https://api-dev.example.com

@@ -66,9 +66,9 @@ interface PageResponse<T> {
     appSlug: string
     permissions: string[]   // 로그인 시 계산된 효과 권한(PERM_*) — 프론트 게이팅의 소스
   }
-  interface AdminLogin { accessToken: string; refreshToken?: string; admin: AdminAccount }
+  interface AdminLogin { accessToken: string; admin: AdminAccount }
   ```
-  `refreshToken`은 타입상 optional인데 실서버는 필드 자체를 안 내려줘요(`AdminLoginResponse`에 없음) — 실서버 기준 항상 `undefined`예요(mock 은 placeholder 문자열을 채우지만 쓰이지 않아요). `admin.appSlug`는 항상 `"admin"` 고정값(JWT의 `appSlug` claim이 non-blank를 요구해서 넣은 placeholder — 실제 앱 슬러그가 아니에요).
+  refresh 토큰은 없어요(`AdminLoginResponse` 는 `accessToken`·`admin` 두 필드) — 콘솔 세션은 access 토큰 하나이고, 만료되면 401 을 받아 다시 로그인해요. `admin.appSlug`는 항상 `"admin"` 고정값(JWT의 `appSlug` claim이 non-blank를 요구해서 넣은 placeholder — 실제 앱 슬러그가 아니에요).
 - **에러**: 자격증명 불일치 → `401 ADMIN_001`
 - **Mock 로그인 규칙**: 비밀번호는 `password` 고정, 이메일은 아무거나 — 이메일 **프리픽스**가 역할을 결정해요(`viewer*`→viewer, `support*`→support, `admin*`→admin, 그 외 전부 master). 로그인 폼 데모 자격증명은 `master@example.com` / `password`. 실 백엔드는 `admin_users.role`로 결정해요.
 
@@ -461,7 +461,9 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
   ```ts
   type AdminFileStatus = 'ACTIVE' | 'QUARANTINED' | 'DELETED'
   interface AdminFile {
-    key: string; size: number; lastModified: string; url: string; quarantined: boolean
+    key: string; size: number; lastModified: string; url: string | null; quarantined: boolean
+    // url: presigned GET(~10분). 검역·복원 같은 액션 응답(§21~§23)은 presign 을 생략해 null 이고 콘솔이 곧 refetch 해요.
+    //      스토리지가 설정되지 않은 서버도 null 을 줘요. lastModified 는 백엔드가 updated_at 을 노출하지 않아 지금은 createdAt 과 같은 값이에요.
     createdAt?: string | null          // 업로드 시각(attachment_file.created_at)
     status?: AdminFileStatus           // DELETED = soft-delete(30일 후 purge)
     originalFilename?: string | null   // 원본 업로드 파일명 — key(UUID 기반)와 별개
@@ -525,7 +527,7 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
 
 ## 게시물 (콘텐츠 모더레이션)
 
-**공유(공개) 게시물** 콘솔 계약이에요 — 앱들의 공개 게시판(`posts`)을 전량 조회하고 숨김/삭제/복원해요. 프라이빗 기록은 이 도메인에 안 와요(각 앱 자체 테이블). 파일(§19~§24)과 동일한 상태 전이·soft-delete·purge 패턴이고, 상태는 `ACTIVE`/`HIDDEN`/`DELETED` 3종이에요. **운영 작성**(공지·이벤트 등 관리자가 직접 쓰는 글 — 작성/수정/이미지 업로드)은 §39~§41, 본문(markdown + `attachment://`) 계약은 § "본문 계약"을 보세요.
+**공유(공개) 게시물** 콘솔 계약이에요 — 앱들의 공개 게시판(`posts`)을 전량 조회하고 숨김/삭제/복원해요. 프라이빗 기록은 이 도메인에 안 와요(각 앱 자체 테이블). 파일(§19~§24)과 동일한 상태 전이·soft-delete·purge 패턴이고, 상태는 `ACTIVE`/`HIDDEN`/`DELETED` 3종이에요. **운영 작성**(공지·이벤트 등 관리자가 직접 쓰는 글 — 작성/수정/이미지 업로드)은 §39~§41, 본문(HTML + `attachment://`, 옛 글은 markdown·평문) 계약은 § "본문 계약"을 보세요.
 
 ### [25] `GET /api/admin/apps/{slug}/content`
 
@@ -568,7 +570,7 @@ soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상
     sizeBytes: number | null; url: string | null   // presigned GET(~10분)
   }
   ```
-- **본문 렌더**: `body`는 markdown(관리자 작성 글) 또는 plain text(기존 회원 글)일 수 있어요 — § "본문 계약" 참고. 본문 내 이미지는 `![alt](attachment://{id})` 참조라 `attachments` 배열의 `id`→`url`로 해석해서 렌더해요.
+- **본문 렌더**: `body`는 HTML(콘솔 편집기로 쓴 글)·markdown(편집기 이전의 관리자 글)·plain text(앱 회원 글) 중 하나예요 — § "본문 계약" 참고. 본문 내 이미지는 `attachment://{id}` 참조라 `attachments` 배열의 `id`→`url`로 해석해서 렌더해요. 서버는 `body` 를 해석하지 않으므로 콘솔은 HTML 본문을 그리기 직전에 허용목록으로 걸러요(`src/lib/sanitizeHtml.ts`, DOMPurify) — 회원 글·다른 클라이언트가 넣은 글이 관리자 세션에서 스크립트를 돌리지 못하게요.
 - **에러**: 게시물 없음 → `404 ADMIN_022`. 슬러그 없음 → `404 ADMIN_003`.
 
 ### [27] `POST /api/admin/apps/{slug}/content/{id}/hide`
@@ -669,14 +671,14 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 프론트는 `NAV_PERM['/content']` 를 `read=PERM_CONTENT_READ` · `write=PERM_CONTENT_MODERATE` 로 걸어 작성/수정 버튼을 숨기지만(`src/lib/rbac.ts`), 최종 강제는 백엔드예요. `PERM_CONTENT_WRITE` 는 폐기된 권한이에요(마이그레이션 `V008` 에서 `CONTENT_MODERATE`/`CONTENT_DELETE` 로 분리, `V009` 에서 제거).
 
-### 본문 계약 — markdown + `attachment://`
+### 본문 계약 — HTML(편집기) + `attachment://`
 
-`posts.body`의 계약이에요. 작성(§39)·수정(§40)·상세 렌더(§26)가 전부 이 규칙을 따라요.
+`posts.body`의 계약이에요. 작성(§39)·수정(§40)·상세 렌더(§26)가 전부 이 규칙을 따라요. **서버는 `body` 를 해석하지 않고 그대로 저장해요** — 형식은 콘솔이 정해요(`AdminPostWriteRequest` 주석).
 
-- **`body`는 markdown**이에요 — 관리자 작성 글(공지·이벤트)은 제목·굵게·목록·링크 등 markdown 문법으로 저장돼요.
-- **인라인 이미지는 `![alt](attachment://{attachmentId})` 참조**로 넣어요. `attachmentId`는 선업로드(§41)로 발급받은 첨부 id예요.
+- **콘솔이 쓰는 글은 HTML** 이에요 — 편집기(`@storkspear/post-editor-react`)가 `getHTML()` 결과를 그대로 저장해요(정렬·색·표·캡션·코드 하이라이트·도면을 담으려면 markdown 으로는 모자라요). 제목 서식·해시태그·본문 폭은 `properties` JSON(`titleStyle`·`tags`·`width`)에 얹혀요.
+- **인라인 이미지는 `attachment://{attachmentId}` 참조**예요 — HTML 이면 `<img src="attachment://{id}">`, 옛 markdown 글이면 `![alt](attachment://{id})`. `attachmentId`는 선업로드(§41)로 발급받은 첨부 id예요.
   - **presigned URL 을 본문에 박제하지 않는 이유**: presigned GET URL 은 ~10분이면 만료돼요 — 본문에 URL 을 저장하면 저장 직후부터 깨진 이미지가 돼요. 참조(`attachment://{id}`)만 저장하고, 렌더 시점에 상세 응답(§26)의 `attachments[]`에서 `id`→`url`(그때그때 새로 발급된 presigned GET)로 해석해요.
-- **plain text 하위호환**: 기존 앱 회원 글은 markdown 이 아닌 평문이에요 — 렌더러(프론트 `PostBody`)가 평문 문장도 문단으로 안전하게 렌더하도록 통일 처리해요. 서버는 본문 형식을 검증하지 않아요(계약상 관례).
+- **옛 글 하위호환**: 편집기를 바꾸기 전에 쓴 관리자 글은 markdown, 앱 회원 글은 평문이에요. 저장 형식을 열로 구분하지 않으므로 렌더러(`PostBody`)가 **본문을 보고 갈라요** — 첫 글자가 `<` 면 HTML(굽기 → 허용목록 정화 → 렌더), 아니면 markdown 으로 렌더해요(평문도 문단으로 안전하게). 「고치기」는 운영자가 쓴 HTML 글에만 열려요 — markdown·평문을 편집기에 실으면 파서가 원문을 HTML 로 해석해 저장하는 순간 되돌릴 수 없어서요.
 - **작성 주체 필드**: `authorType`(`'USER'` | `'ADMIN'`)이 작성 주체를 구분하고, `authorType='ADMIN'`이면 `authorUserId=null` + `authoredBy`=콘솔 계정 email 이에요(§25 스키마 참고).
 
 ### [39] `POST /api/admin/apps/{slug}/content`
@@ -688,9 +690,9 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
   interface AdminPostWriteBody {
     board: string            // 선택, ≤50 — 미선택은 '' (미분류). 콘솔 셀렉트는 고정 4종(notice/event/qna/free)
     title: string            // ≤300 (백엔드 스키마상 선택이지만 콘솔 폼은 필수 입력)
-    body: string             // markdown — § "본문 계약"
-    properties?: string | null // 자유 JSON 문자열 — 콘솔 작성 화면은 해시태그를 {"tags": string[]} 로 저장
-    attachmentIds?: number[] // §41 로 발급받은 첨부 id — 저장 시 연관 확정
+    body: string             // HTML(편집기 저장본) — § "본문 계약"
+    properties?: string | null // 자유 JSON 문자열 — 콘솔은 { tags, width, wide(옛 표기), titleStyle } 를 저장하고 모르는 키는 보존
+    attachmentIds?: number[] // §41 로 발급받은 첨부 id — 작성에선 붙일 목록, 수정에선 글이 가져야 할 첨부 전체(§40)
   }
   ```
 - **board 시맨틱**: 콘솔에선 선택값이에요 — 미선택이면 서버가 빈 문자열(미분류)로 저장하고, 상세 화면은 board 태그를 숨겨요. (앱 회원용 `POST /api/apps/{slug}/posts` 의 `board`는 여전히 필수 — 콘솔 계약만 완화.)
@@ -703,7 +705,7 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 게시물 수정 — `board`/`title`/`body`/`properties`를 교체하고 첨부를 재연관해요. **작성자(`authorType`/`authoredBy`)·상태는 불변**이에요. 클라이언트 함수는 `updatePost`. 권한은 §39와 동일하게 `PERM_CONTENT_MODERATE`(PUT matcher).
 
-- **Request body**: §39와 동일(`AdminPostWriteBody`). `attachmentIds`는 **전체 재전송**이에요 — 이미 이 게시물에 연관된 id 는 멱등 통과, 새 선업로드 id 만 연관 확정돼요.
+- **Request body**: §39와 동일(`AdminPostWriteBody`). `attachmentIds`는 수정에선 **그 글이 가져야 할 첨부 전체**예요(백엔드 `AttachmentPort.syncAssociations`) — 목록에 없는 첨부는 떼어져요(soft-delete, 30일 안에 파일 화면에서 복원 가능). 본문·`properties` 에 `attachment://{id}` 로 남아 있는 첨부는 목록에 없어도 지켜져요. 필드를 생략(`null`)하면 첨부를 손대지 않고, 빈 배열(`[]`)은 전부 떼어냄이라 뜻이 달라요. 콘솔은 **본문의 참조 + 제목 배너 + 불러올 때 본문 밖에 있던 첨부**를 보내요 — 편집기에서 지운 사진만 떼어지고, 보이지 않던 첨부는 수정으로 사라지지 않아요. 회원(`authorType='USER'`) 글은 서버가 첨부 동기화를 건너뛰어요(`attachmentIds` 무시) — 콘솔도 회원 글은 편집기로 열지 않아요.
 - **Response**: 갱신된 `AdminPostDetail`
 - **감사**: `admin.content.update`.
 - **에러**: 게시물 없음 → `404 ADMIN_022`. 슬러그 없음 → `404 ADMIN_003`. 첨부 연관 실패 → `400 ADMIN_023`.
@@ -725,7 +727,7 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 - **업로드 → 작성 시퀀스**:
   1. 이미지 선택 → §41 호출로 티켓 발급
   2. `uploadUrl`(presigned PUT)로 파일 직접 업로드(`uploadFileToUrl` — JSON 봉투·인증 헤더 없이 스토리지 직행)
-  3. 에디터 본문엔 `![alt](attachment://{attachmentId})` 참조 삽입(화면 미리보기는 `previewUrl`)
+  3. 에디터 본문엔 `<img src="attachment://{attachmentId}">` 참조 삽입(화면 미리보기는 `previewUrl` — 본문엔 안 박혀요)
   4. 글 저장(§39/§40) 시 `attachmentIds`에 해당 id 를 실어 **연관 확정** — 확정 전 첨부는 미연관 상태로 남아요
 - **감사**: `admin.content.upload`(resourceType `AttachmentFile`).
 - **에러**: 슬러그 없음 → `404 ADMIN_003`. `contentType`이 `image/*` 아님 → `422 CMN_001`(bean validation 계약, 실서버·mock 동일).
