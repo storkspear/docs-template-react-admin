@@ -1,10 +1,14 @@
+<a id="admin-api--엔드포인트-계약"></a>
+
 # Admin API — 엔드포인트 계약
 
 `template-spring`의 `core/core-admin-impl` 모듈이 제공하는 `/api/admin/*` 전체 계약이에요. 프론트 타입은 `src/lib/types.ts`, 클라이언트 함수는 `src/api/client.ts`, mock 구현은 `src/mocks/handlers.ts` + `fixtures.ts`에 있어요.
 
-**범위(실측)**: 백엔드 매핑 **49개**(§1~§49 — 데이터 47 + `login` + `health`) 전부와, 백엔드 구현 전이라 **mock 전용**인 발송(메시징) 6개(§M1~§M6)·영수증 4개(§18b~§18d — 설정 GET/PUT 포함)를 다뤄요. `src/api/client.ts`의 export 함수는 60개(= 백엔드 대응 48 + mock 전용 발송 6 + mock 전용 영수증 4 + 헬퍼 2(`isServerDown`·`uploadFileToUrl` — presigned PUT 직행이라 admin 엔드포인트 함수가 아니에요) — `health`는 인프라 프로브라 클라이언트 함수가 없어요)예요. 섹션 번호 §1~§49는 `template-spring`의 [`docs/api-and-functional/admin-console.md`](https://github.com/storkspear/template-spring/blob/main/docs/api-and-functional/admin-console.md) §3 엔드포인트 카탈로그와 같은 번호를 써요 — 두 레포 문서를 나란히 놓고 대조할 수 있게요. 개수는 시간이 지나면 어긋나기 쉬우니, 의심되면 `client.ts`와 spring 카탈로그를 먼저 보세요.
+서버의 관리자 엔드포인트는 §1~§49에서 다뤄요. 번호는 [Spring 관리자 API 카탈로그](https://storkspear.github.io/docs-template-spring/#api-and-functional/admin-console.md)와 맞췄어요. 발송 6개(§M1~§M6)와 영수증 4개(§18b~§18d의 설정 GET·PUT 포함)는 현재 Mock 전용이에요. 지원 범위를 혼동하지 않도록 [Mock·실서버 차이](#mock--실서버-차이)를 함께 확인해주세요.
 
-> **인증 스코프 — RBAC 4티어**: admin 로그인은 앱 유저 인증과 완전히 분리돼요. 백엔드는 별도 `admin.admin_users` 스키마 계정으로 콘솔 JWT 를 발급하는데, `role` claim 은 **RBAC 4티어 코드**(`viewer` < `support` < `admin` < `master` — 누적)이고, 역할에서 계산된 효과 권한(`PERM_*` 목록)이 **`permissions` claim** 으로 실려요. 백엔드 `SecurityConfig`가 `/api/admin/**` 리소스별로 `hasAuthority(PERM_*)`를 검사해요(예: 환불 POST 는 `PERM_PAYMENTS_WRITE`). 앱 유저 JWT 는 `permissions` claim 이 없어 `/api/admin/**`에서 403, 반대로 콘솔 JWT(`appSlug="admin"`)로 `/api/apps/{slug}/**`에 접근하면 `AppSlugVerificationFilter`가 403 — 양방향 격리예요. 프론트는 로그인 응답의 `admin.permissions`로 메뉴/버튼을 게이팅하지만(`src/lib/rbac.ts`), 최종 강제는 항상 백엔드예요.
+관리자 인증은 앱 사용자 인증과 분리돼요. 서버는 `admin.admin_users`의 계정으로 콘솔 JWT를 발급해요. `role`에는 `viewer`, `support`, `admin`, `master` 중 하나가, `permissions`에는 해당 역할의 유효 권한(`PERM_*`)이 들어가요.
+
+프론트는 로그인 응답의 `admin.permissions`로 메뉴와 버튼을 표시하고, 서버는 `SecurityConfig`에서 요청별 권한을 검사해요. 앱 사용자 JWT에는 관리자 권한이 없어 관리자 API에 접근할 수 없고, 콘솔 JWT(`appSlug="admin"`)로 앱 API에 접근하면 `AppSlugVerificationFilter`가 거절해요.
 
 기본 grant(백엔드 V003 seed 기준, 매트릭스 편집으로 조정 가능 — §37~§38):
 
@@ -19,7 +23,7 @@
 
 ## 공통 응답 envelope
 
-모든 응답은 `{ data, error }`로 래핑돼요 (`ApiResponse<T>`).
+일반 API 응답은 `{ data, error }` 형식이에요(`ApiResponse<T>`). 각 절의 오류 목록은 해당 기능의 오류를 중심으로 적었으며, 공통 인증·권한·검증·서버 오류는 별도로 발생할 수 있어요.
 
 ```ts
 interface ApiError {
@@ -32,6 +36,8 @@ interface ApiResponse<T> {
   error: ApiError | null
 }
 ```
+
+위 TypeScript 타입은 프론트가 사용하는 개념 모델이에요. 현재 Spring의 Jackson 설정은 null 필드를 생략하므로 실제 JSON은 성공 시 `{ "data": ... }`, 오류 시 `{ "error": ... }` 형태예요. `ApiError.details`도 값이 없으면 생략돼요. `ApiResponse.empty()`를 HTTP 200으로 반환하면 `{}`이고, HTTP 204는 본문 자체가 없어요. 클라이언트는 서버에 없는 필드가 TypeScript 선언만으로 생기는 것은 아니라는 점을 고려해야 해요.
 
 목록 엔드포인트(`users` · `audit-logs` · `payments` · `files` · `content`)는 `data` 안에 `PageResponse<T>`가 또 한 겹 있어요.
 
@@ -48,6 +54,8 @@ interface PageResponse<T> {
 `src/api/client.ts`의 `request()`가 이 envelope을 벗기고 `error`가 있으면 `ApiRequestError`로 던져요 — 화면 코드는 항상 벗겨진 DTO만 다뤄요.
 
 ---
+
+<a id="인증--계정"></a>
 
 ## 인증 · 계정
 
@@ -69,7 +77,7 @@ interface PageResponse<T> {
   interface AdminLogin { accessToken: string; admin: AdminAccount }
   ```
   refresh 토큰은 없어요(`AdminLoginResponse` 는 `accessToken`·`admin` 두 필드) — 콘솔 세션은 access 토큰 하나이고, 만료되면 401 을 받아 다시 로그인해요. `admin.appSlug`는 항상 `"admin"` 고정값(JWT의 `appSlug` claim이 non-blank를 요구해서 넣은 placeholder — 실제 앱 슬러그가 아니에요).
-- **에러**: 자격증명 불일치 → `401 ADMIN_001`
+- **에러**: 자격증명 불일치 → `401 ADMIN_001`. 로그인 실패 누적으로 잠긴 계정 → `429 ADMIN_028`. 잠금 응답의 `Retry-After` 헤더와 `details.retryAfterSeconds`에 남은 시간이 초 단위로 담겨요.
 - **Mock 로그인 규칙**: 비밀번호는 `password` 고정, 이메일은 아무거나 — 이메일 **프리픽스**가 역할을 결정해요(`viewer*`→viewer, `support*`→support, `admin*`→admin, 그 외 전부 master). 로그인 폼 데모 자격증명은 `master@example.com` / `password`. 실 백엔드는 `admin_users.role`로 결정해요.
 
 ### [2] `GET /api/admin/health`
@@ -83,6 +91,8 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 `local start`가 이 요청 성공 여부로 `VITE_USE_MOCK` 값을 자동 결정해요 (§ "Mock ↔ 실서버 토글" 참고).
 
 ---
+
+<a id="앱--대시보드"></a>
 
 ## 앱 · 대시보드
 
@@ -130,8 +140,8 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
   }
   ```
   `renewalFailures7d`/`webhookPending`/`webhookFailed`는 `ops`(§8)의 동명 필드를 **전 슬러그 fan-out 합산**한 값이에요 — 대시보드 "운영 신호" 카드가 이 3필드로 전사 신호 유무를 판단해요(전부 0이면 "정상").
-- **데이터 소스**: 전 슬러그 fan-out(슬러그별 DataSource 순회) 후 메모리 합산 — users·신규(`created_at`)·DAU/MAU(§ DAU/MAU 정의)·매출/환불(`payment_history`)·활성구독·`failures24h`(`audit_logs WHERE result='FAILURE'` 24시간 이내 count)·`renewalFailures7d`/`webhookPending`/`webhookFailed`(§8과 동일 쿼리의 fleet 합).
-- **에러**: 없음(전사 지표라 slug 파라미터가 없어서 `ADMIN_003` 대상이 아님).
+- **데이터 소스**: 전 슬러그 fan-out(슬러그별 DataSource 순회) 후 메모리 합산 — users·신규(`created_at`)·DAU/MAU(§ DAU/MAU 정의)·매출(`payment_history`)·환불(`payment_refunds`)·활성구독·`failures24h`(`audit_logs WHERE result='FAILURE'` 24시간 이내 count)·`renewalFailures7d`/`webhookPending`/`webhookFailed`(§8과 동일 쿼리의 fleet 합).
+- **오류 범위**: slug를 받지 않으므로 `ADMIN_003`은 발생하지 않아요. 공통 인증·권한·서버 오류는 발생할 수 있어요.
 
 ### [5] `GET /api/admin/dashboard/top-customers`
 
@@ -146,7 +156,7 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
   }
   ```
 - **데이터 소스**: 전 슬러그 fan-out 후 `payment_history`를 `(slug, userId)`로 그룹핑해 `window` 기간 내 합산·건수 집계, `totalAmount` 내림차순 `size`건. `gross`(§ gross/net 정의)와 동일하게 `PAID`/`REFUNDED`/`PARTIALLY_REFUNDED` 상태를 포함해요(환불 여부와 무관하게 한 번이라도 수금된 금액 기준).
-- **에러**: 없음(전사 지표라 slug 파라미터가 없어서 `ADMIN_003` 대상이 아님).
+- **오류 범위**: slug를 받지 않으므로 `ADMIN_003`은 발생하지 않아요. 공통 인증·권한·서버 오류는 발생할 수 있어요.
 
 ### [6] `GET /api/admin/apps/{slug}/metrics`
 
@@ -253,9 +263,11 @@ curl -sf -m 3 -o /dev/null "$target/api/admin/health"
 - **감사**: 서버가 열람 사실을 `user_read_history`에 기록해요 — "누가 누구의 원본을 봤는지"가 남아요. 프론트는 드로어를 다시 열면 다시 마스킹 상태로 시작해요(열람 = 명시 액션).
 - **에러**: §10과 동일(`ADMIN_005`/`ADMIN_003`).
 
+<a id="42-get-apiadminappsslugusersuseridexport--gdpr-개인정보-export-v111"></a>
+
 ### [42] `GET /api/admin/apps/{slug}/users/{userId}/export` — GDPR 개인정보 export (v1.11)
 
-GDPR 열람권(Art.15) 대응 — 한 사용자의 연관 데이터를 **JSON 번들 1개**로 반환해요. **전 PII 원본**을 노출하므로 `PERM_USERS_EXPORT` 로 게이팅(백엔드 `SecurityConfig` 가 export 패턴에 전용 매처를 걸어요 — UNMASK 와 별개 권한이고, READ 만으로는 403 `CMN_005`)하고, 발급 사실은 `user_read_history`에 `EXPORT`로 기록돼요. 첨부 **파일 실체는 미포함** — `attachments[].storageKey` 메타만 담고 개별 다운로드는 파일 화면(§19~§20)에서 해요. 클라이언트 함수는 `exportUser`. 프론트는 사용자 상세 드로어에서 "데이터 내보내기" 버튼(`PERM_USERS_EXPORT` 게이팅)으로 호출해 응답을 `user-{id}-export.json` 파일로 내려받아요.
+사용자 데이터 열람 요청에 사용할 수 있도록 연관 데이터를 JSON 번들로 반환해요. **전 PII 원본**을 노출하므로 `PERM_USERS_EXPORT` 로 게이팅(백엔드 `SecurityConfig` 가 export 패턴에 전용 매처를 걸어요 — UNMASK 와 별개 권한이고, READ 만으로는 403 `CMN_005`)하고, 발급 사실은 `user_read_history`에 `EXPORT`로 기록돼요. 첨부 **파일 실체는 미포함** — `attachments[].storageKey` 메타만 담고 개별 다운로드는 파일 화면(§19~§20)에서 해요. 클라이언트 함수는 `exportUser`. 프론트는 사용자 상세 드로어에서 "데이터 내보내기" 버튼(`PERM_USERS_EXPORT` 게이팅)으로 호출해 응답을 `user-{id}-export.json` 파일로 내려받아요.
 
 - **Response** (`AdminUserExportResponse`):
   ```ts
@@ -277,16 +289,20 @@ GDPR 열람권(Art.15) 대응 — 한 사용자의 연관 데이터를 **JSON �
     attachments: AdminExportAttachment[]        // 메타(오브젝트 실체 제외)
   }
   ```
-- **에러**: 사용자 없음 → `404 ADMIN_005`. **이미 익명화된 사용자** → `410 ADMIN_025`. 슬러그 없음 → `404 ADMIN_003`. 권한 없음(UNMASK 부재) → `403 CMN_005`.
+- **에러**: 사용자 없음 → `404 ADMIN_005`. **이미 익명화된 사용자** → `410 ADMIN_025`. 슬러그 없음 → `404 ADMIN_003`. 권한 없음(`PERM_USERS_EXPORT` 부재) → `403 CMN_005`.
+
+<a id="43-delete-apiadminappsslugusersuserid--콘솔-탈퇴-soft-delete-v111"></a>
 
 ### [43] `DELETE /api/admin/apps/{slug}/users/{userId}` — 콘솔 탈퇴 (soft-delete, v1.11)
 
-GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동일 시맨틱(`deleted_at` 세팅 + 해당 유저 refresh token 전체 revoke)을 콘솔 경로로 노출해요. 쓰기 권한 `PERM_USERS_WRITE`(**신규** — 기본 grant 는 `master`만. `UNMASK` 만으로는 삭제 불가)로 게이팅해요. soft-delete 후 **30일 유예**가 지나면 `UserErasureScheduler`가 도메인별 처리표대로 완전삭제/익명화해요(auth 토큰·소셜·기기·알림설정·활동일은 hard delete, `users`·`payment_history`·`posts`·`analytics_events`는 익명화, 결제·구독·감사 원장은 법정 보존). 클라이언트 함수는 `deleteUser`. 프론트는 상세 드로어의 "계정 삭제" 버튼(`PERM_USERS_WRITE` 게이팅)으로 호출하며, 되돌릴 수 없음·30일 유예 익명화를 확인 모달로 안내해요.
+사용자 삭제 요청을 접수하는 단계예요. 앱 유저 `withdraw` 와 동일 시맨틱(`deleted_at` 세팅 + 해당 유저 refresh token 전체 revoke)을 콘솔 경로로 노출해요. 쓰기 권한 `PERM_USERS_WRITE`(기본 grant 는 `master`만. `UNMASK` 만으로는 삭제 불가)로 게이팅해요. soft-delete 후 **30일 유예**가 지나면 `UserErasureScheduler`가 도메인별 처리표대로 완전삭제/익명화해요(auth 토큰·소셜·기기·알림설정·활동일은 hard delete, `users`·`payment_history`·`posts`·`analytics_events`는 익명화, 결제·구독·감사 원장은 별도 보존 정책 적용). 클라이언트 함수는 `deleteUser`. 프론트는 상세 드로어의 "계정 삭제" 버튼(`PERM_USERS_WRITE` 게이팅)으로 호출하며, 되돌릴 수 없음·30일 유예 익명화를 확인 모달로 안내해요.
 
-- **Response**: 본문 없는 성공 — `200` + `{ data: null, error: null }`(`ApiResponse.empty()`). 클라이언트(`deleteUser`)는 `Promise<void>`.
+- **Response**: 데이터 없는 성공 — `200`과 `{}`(`ApiResponse.empty()`, null 필드 생략). 클라이언트(`deleteUser`)는 `Promise<void>`.
 - **에러**: **이미 탈퇴 처리** → `400 ADMIN_024`. **이미 익명화** → `410 ADMIN_025`. 사용자 없음 → `404 ADMIN_005`. 슬러그 없음 → `404 ADMIN_003`. 권한 없음(WRITE 부재) → `403 CMN_005`.
 
 ---
+
+<a id="감사로그--분석"></a>
 
 ## 감사로그 · 분석
 
@@ -306,7 +322,7 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
     slug: string | null; result: AuditResult; ipAddress: string | null; occurredAt: string
   }
   ```
-- **데이터 소스**: `slug` 지정 시 단일 스키마 조회. 미지정 시 전 슬러그 fan-out 후 `occurred_at` 기준 병합 정렬 + **메모리 페이징**(설계 스펙의 "알려진 한계" — 솔로 규모(앱 수 ~10, 로그 수만 건)에선 문제없지만, 커지면 slug 필터를 유도하거나 커서 방식으로 바꿔야 해요).
+- **데이터 소스**: `slug` 지정 시 단일 스키마 조회. 미지정 시 전 슬러그 fan-out 후 `occurred_at` 기준 병합 정렬 + 메모리에서 페이지를 나눠 반환해요. 앱 수와 조회량에 따라 합치는 데이터가 늘어나므로, 특정 앱의 로그를 찾을 때는 slug와 기간을 함께 지정해요.
 - **에러**: `from`/`to` 파싱 실패 → `400 ADMIN_004`.
 
 ### [13] `GET /api/admin/analytics/{metric}`
@@ -321,7 +337,7 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
   interface TimeSeries { metric: string; interval: string; points: TimeSeriesPoint[] }
   ```
   응답 shape은 `slug` 유무와 무관하게 동일해요 — `slug` 생략 시 값만 전앱 합산으로 바뀌어요.
-- **데이터 소스**: `slug` 지정 시 해당 앱 스키마만 집계. 생략 시 전 슬러그 fan-out 후 **날짜별로 합산**(대시보드 "전체 매출 추이"·"전체 가입 추이" 차트가 이 경로를 써요).
+- **데이터 소스**: `slug` 지정 시 해당 앱 스키마만 집계. 생략 시 앱별 결과를 날짜별로 합산해요. 다만 현재 대시보드는 `useStackedTrend`로 앱마다 요청한 뒤 화면에서 누적 차트를 구성해요.
 
   | metric | 소스 | 비고 |
   |---|---|---|
@@ -394,7 +410,7 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 ### [18] `GET /api/admin/apps/{slug}/payments/{paymentId}/refunds`
 
-환불 이력(원장) — 환불 모달의 "환불 이력" 리스트가 써요. 다회 부분환불 시 건별 금액·사유·시각·처리자를 최신순으로 반환해요(`payment_history`의 누적값만으로는 건별 정보가 덮이기 때문).
+환불 이력(원장)은 결제 상세 팝업에서 보여줘요. 다회 부분환불 시 건별 금액·사유·시각·처리자를 최신순으로 반환해요(`payment_history`의 누적값만으로는 건별 정보가 덮이기 때문).
 
 - **Response**: `AdminRefundHistoryItem[]`
   ```ts
@@ -403,11 +419,13 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
     operator: string | null; refundedAt: string
   }
   ```
-- **데이터 소스**: `payment_refunds` 원장(환불 1건 = 1행). 매출 `refunded` 집계(§ gross/net)도 이 원장을 씁니다.
+- **데이터 소스**: `payment_refunds` 원장(환불 1건 = 1행). 매출 `refunded` 집계(§ gross/net)도 이 원장을 사용해요.
+
+<a id="18b-get-apiadminappsslugpaymentspaymentidreceipt--mock-전용"></a>
 
 ### [18b] `GET /api/admin/apps/{slug}/payments/{paymentId}/receipt` — **mock 전용**
 
-결제 영수증 payload — **미리보기 팝업과 이메일 발송이 같은 이 payload 를 렌더**해요(단일 소스). 서버가 금액 원장(결제 + 환불 차감 행)과 발행처(§18d 설정)까지 조립해 내려주므로 화면과 메일 내용이 어긋날 수 없어요. 환불완료/부분환불 건의 상세 팝업 [영수증] 버튼과 환불 성공 직후 자동 팝업이 써요.
+결제 영수증 미리보기에 사용하는 데이터예요. 현재 Mock의 `buildPaymentReceipt`가 결제·환불 내역과 발행처 설정을 조합해요. 실서버의 영수증 조립과 이메일 발송은 구현되지 않았어요. 환불 후 자동 팝업이나 결제 상세의 [영수증] 버튼에서 미리보기를 열 수 있어요.
 
 - **Response**: `AdminPaymentReceipt`
   ```ts
@@ -426,16 +444,20 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
   ```
 - **실서버 반영 필요**: template-spring `AdminPaymentsController` 에 아직 없어요. `VITE_USE_MOCK=false` 에선 404 — 백엔드에 §18b~§18d 3종(영수증 조립 + 메일 발송 + 발행처 설정 저장)이 함께 추가돼야 해요.
 
+<a id="18c-post-apiadminappsslugpaymentspaymentidreceipt-email--mock-전용"></a>
+
 ### [18c] `POST /api/admin/apps/{slug}/payments/{paymentId}/receipt-email` — **mock 전용**
 
-§18b 와 **같은 payload** 로 만든 영수증을 결제자 이메일로 발송해요(서버측 메일 템플릿 렌더). 관리자가 수신자를 바꿀 수 없어요(결제자 고정).
+영수증 이메일 발송을 요청하는 Mock API예요. 현재는 수신자 이메일을 담은 성공 응답만 돌려주며 실제 메일을 보내지 않아요. 수신자는 결제자로 고정돼 있어요.
 
-- **Response**: `{ sentTo: string }` — 발송된 수신자 이메일.
+- **Response**: `{ sentTo: string }` — Mock이 반환한 수신자 이메일. 실제 발송 완료를 뜻하지 않아요.
 - **에러**: 결제 없음 → `404 ADMIN_007`.
+
+<a id="18d-getput-apiadminsettingsreceipt--mock-전용"></a>
 
 ### [18d] `GET`/`PUT /api/admin/settings/receipt` — **mock 전용**
 
-영수증 발행처 설정(설정 > 영수증 관리 카드) — 영수증(§18b/§18c) 하단 발행처 표기에 쓰여요.
+설정 화면의 영수증 발행처 정보를 읽고 저장하는 Mock API예요. 값은 메모리에 보관해 미리보기에 사용하며, 새로고침하면 초기값으로 돌아가요. 서버 저장과 실제 메일 반영은 아직 없어요.
 
 - **Body/Response**: `AdminReceiptSettings`
   ```ts
@@ -466,12 +488,13 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
     //      스토리지가 설정되지 않은 서버도 null 을 줘요. lastModified 는 백엔드가 updated_at 을 노출하지 않아 지금은 createdAt 과 같은 값이에요.
     createdAt?: string | null          // 업로드 시각(attachment_file.created_at)
     status?: AdminFileStatus           // DELETED = soft-delete(30일 후 purge)
-    originalFilename?: string | null   // 원본 업로드 파일명 — key(UUID 기반)와 별개
+    originalFilename?: string | null   // 원본 업로드 파일명 — 첨부 ID인 key와 별개
     contentType?: string | null        // MIME 타입
     durationSec?: number | null        // 오디오/영상 재생 길이(초) — 실서버 스토리지 미구현, mock 제공
     associatedType?: string | null     // polymorphic 연관 대상("USER"/"POST")
     associatedId?: number | null
     uploadedBy?: string | null         // 업로더 — PII, 마스킹 대상
+    uploaderName?: string | null       // 업로더 표시 이름
     uploadedIp?: string | null         // 업로드 시점 IP — PII, 마스킹 대상
     userAgent?: string | null          // 업로드 기기 UA — PII, 마스킹 대상
     deleteReason?: string | null       // soft-delete 사유
@@ -479,6 +502,8 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
     purgeAt?: string | null            // 영구삭제 예정 시각(= deletedAt + 30일) — D-day 표시용
   }
   ```
+  실서버의 `key`는 `attachment_file.id`를 문자열로 표현한 값이에요. 스토리지 객체 키와 구분해요. 파일 종류의 열람 권한이 없거나 서명 URL을 만들 수 없으면 `url`은 null일 수 있어요.
+
   `url`은 presigned GET URL(약 10분 유효) — 목록을 오래 띄워둔 채 미리보기/원본보기를 누르면 만료돼 있을 수 있어요(그럴 땐 재검색으로 새 URL을 받아요).
 - **PII 마스킹**: `PERM_FILES_UNMASK` 없는 세션엔 `uploadedBy`/`uploadedIp`/`userAgent`가 마스킹돼 내려와요. 원본은 §20 "조회"로 단건 열람.
 - **에러**: 알 수 없는 슬러그 → `404 ADMIN_003`
@@ -492,33 +517,33 @@ GDPR 삭제권(Art.17) 대응의 접수 단계 — 앱 유저 `withdraw` 와 동
 
 ### [21] `POST /api/admin/apps/{slug}/files/quarantine?key=`
 
-파일을 사용자에게 안 보이게 검역(숨김) 처리 — 오브젝트 키를 `quarantine/` 프리픽스로 옮기는 시맨틱이에요(별도 플래그가 아니라 저장 위치 자체가 바뀜). 갱신된 `AdminFile`(새 `key`, `quarantined: true`)을 반환해요.
+파일 상태를 `QUARANTINED`로 바꿔 사용자의 파일 조회에서 제외해요. 실서버는 객체 키를 바꾸지 않으며, 이미 격리된 파일에 다시 요청하면 같은 상태를 유지해요. Mock은 `quarantine/` 접두사를 붙이는 별도 동작을 사용해요.
 
 - **Query**: `key`(필수)
 - **Response**: 갱신된 `AdminFile`
-- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. 이미 검역된 파일을 다시 검역 시도 → `400 ADMIN_008`
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. 파일 없음 → `404 ADMIN_010`. Mock은 중복 격리에 `400 ADMIN_008`을 반환하지만 실서버는 같은 상태를 유지해요.
 
 ### [22] `POST /api/admin/apps/{slug}/files/restore?key=`
 
-검역된 파일을 원상 복구(`quarantine/` 프리픽스 제거). 갱신된 `AdminFile`(`quarantined: false`)을 반환해요.
+파일의 격리를 해제해요. 실서버는 상태를 `ACTIVE`로 바꾸며 객체 키를 유지해요. 이미 격리 상태가 아닌 파일이면 같은 상태를 유지해요. Mock은 `quarantine/` 접두사를 제거해요.
 
-- **Query**: `key`(필수 — 검역된 상태의 현재 키, 즉 `quarantine/` 프리픽스가 붙은 값)
+- **Query**: `key`(필수 — 실서버에서는 첨부 레코드 ID)
 - **Response**: 갱신된 `AdminFile`
-- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. 검역 상태가 아닌 파일을 복원 시도 → `400 ADMIN_009`
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. Mock에서 격리 상태가 아닌 파일을 복원 시도 → `400 ADMIN_009`. 실서버는 같은 상태를 유지해요
 
 ### [23] `POST /api/admin/apps/{slug}/files/restore-deleted?key=`
 
-soft-delete 된 파일 복원 — "삭제 대상"(`status: 'DELETED'`)을 정상으로 되돌려요(purge 예약 취소). 클라이언트 함수는 `restoreDeletedFile`.
+삭제 대상(`DELETED`) 파일의 삭제 예약을 취소해요. 삭제 전 격리 이력이 있으면 `QUARANTINED`로, 그렇지 않으면 `ACTIVE`로 복원해요. 이미 삭제 대상이 아닌 파일은 같은 상태를 유지해요. 클라이언트 함수는 `restoreDeletedFile`이에요.
 
 - **Query**: `key`(필수)
 - **Response**: 갱신된 `AdminFile`
-- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. (mock 은 삭제 대상(`DELETED`)이 아닌 파일이면 `400 ADMIN_009`를 재사용해 거절하지만, 실서버엔 이 분기가 없어요 — 상태 검증 없이 그대로 ACTIVE 로 되돌려요.)
+- **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`. Mock은 삭제 대상이 아닌 파일에 `400 ADMIN_009`를 반환하지만, 실서버는 같은 상태를 유지해요.
 
 ### [24] `DELETE /api/admin/apps/{slug}/files?key=`
 
-파일 삭제 — **즉시 영구삭제가 아니라 soft-delete**예요. 사유가 필수이고, 30일 뒤 purge 스케줄러(`AttachmentPurgeScheduler`)가 실제 오브젝트/row 를 지워요. 그 전엔 "삭제 대상" 탭에서 §23으로 복원할 수 있어요.
+파일을 삭제 대상으로 표시해요(soft-delete). 삭제 시에는 공통 삭제 권한과 파일 종류별 삭제 권한을 확인하고, 종류 권한이 없으면 `403 ADMIN_027`로 거절해요. 사유가 필수이고, 30일 뒤 purge 스케줄러(`AttachmentPurgeScheduler`)가 실제 오브젝트/row 를 지워요. 그 전엔 "삭제 대상" 탭에서 §23으로 복원할 수 있어요.
 
-- **Query**: `key`(필수, 삭제 대상 오브젝트 키)
+- **Query**: `key`(필수, 삭제 대상 첨부 레코드 ID)
 - **Request Body**: `{ reason: string }` — 삭제 사유 필수
 - **Response**: 실서버는 갱신된 `AdminFile`(`status: 'DELETED'`, `deleteReason`/`deletedAt`/`purgeAt` 채워짐)을 내려주지만, 클라이언트(`deleteAppFile`)는 반환값을 쓰지 않고 `Promise<void>`로 버려요(mock 도 `data: null` 반환) — 갱신 행이 필요하면 목록을 재조회해요.
 - **에러**: 슬러그 없음 → `404 ADMIN_003`. `key` 파일 없음 → `404 ADMIN_010`.
@@ -591,6 +616,8 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ---
 
+<a id="관리자-계정--역할-master-전용"></a>
+
 ## 관리자 계정 · 역할 (master 전용)
 
 `PERM_ADMIN_MANAGE`(기본 grant 로는 master 만) 필요 — 역할·권한 화면(`/roles`)이 써요. 편집은 **자기보다 낮은 티어만** 가능해요(상급자·동급·본인 편집 시도 → `403 ADMIN_017`).
@@ -655,7 +682,7 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 - **Body**: `{ roles: { role: AdminRole; permissions: string[] }[] }`
 - **Response**: 갱신된 `RolePermissionMatrix`
-- **에러**: 상급/동급 티어 편집 → `403 ADMIN_017`. 편집 불가 권한 → `400 ADMIN_018`. READ 없이 WRITE/UNMASK 부여 → `400 ADMIN_019`.
+- **에러**: 상급/동급 티어 편집 → `403 ADMIN_017`. 편집 불가 권한 → `400 ADMIN_018`. READ 없이 WRITE/UNMASK 부여 → `400 ADMIN_019`. 본인이 보유하지 않은 권한 부여 → `403 ADMIN_026`.
 
 ---
 
@@ -671,14 +698,16 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 프론트는 `NAV_PERM['/content']` 를 `read=PERM_CONTENT_READ` · `write=PERM_CONTENT_MODERATE` 로 걸어 작성/수정 버튼을 숨기지만(`src/lib/rbac.ts`), 최종 강제는 백엔드예요. `PERM_CONTENT_WRITE` 는 폐기된 권한이에요(마이그레이션 `V008` 에서 `CONTENT_MODERATE`/`CONTENT_DELETE` 로 분리, `V009` 에서 제거).
 
+<a id="본문-계약--html편집기--attachment"></a>
+
 ### 본문 계약 — HTML(편집기) + `attachment://`
 
 `posts.body`의 계약이에요. 작성(§39)·수정(§40)·상세 렌더(§26)가 전부 이 규칙을 따라요. **서버는 `body` 를 해석하지 않고 그대로 저장해요** — 형식은 콘솔이 정해요(`AdminPostWriteRequest` 주석).
 
 - **콘솔이 쓰는 글은 HTML** 이에요 — 편집기(`@storkspear/post-editor-react`)가 `getHTML()` 결과를 그대로 저장해요(정렬·색·표·캡션·코드 하이라이트·도면을 담으려면 markdown 으로는 모자라요). 제목 서식·해시태그·본문 폭은 `properties` JSON(`titleStyle`·`tags`·`width`)에 얹혀요.
 - **인라인 이미지는 `attachment://{attachmentId}` 참조**예요 — HTML 이면 `<img src="attachment://{id}">`, 옛 markdown 글이면 `![alt](attachment://{id})`. `attachmentId`는 선업로드(§41)로 발급받은 첨부 id예요.
-  - **presigned URL 을 본문에 박제하지 않는 이유**: presigned GET URL 은 ~10분이면 만료돼요 — 본문에 URL 을 저장하면 저장 직후부터 깨진 이미지가 돼요. 참조(`attachment://{id}`)만 저장하고, 렌더 시점에 상세 응답(§26)의 `attachments[]`에서 `id`→`url`(그때그때 새로 발급된 presigned GET)로 해석해요.
-- **옛 글 하위호환**: 편집기를 바꾸기 전에 쓴 관리자 글은 markdown, 앱 회원 글은 평문이에요. 저장 형식을 열로 구분하지 않으므로 렌더러(`PostBody`)가 **본문을 보고 갈라요** — 첫 글자가 `<` 면 HTML(굽기 → 허용목록 정화 → 렌더), 아니면 markdown 으로 렌더해요(평문도 문단으로 안전하게). 「고치기」는 운영자가 쓴 HTML 글에만 열려요 — markdown·평문을 편집기에 실으면 파서가 원문을 HTML 로 해석해 저장하는 순간 되돌릴 수 없어서요.
+  - **presigned URL 을 본문에 박제하지 않는 이유**: presigned GET URL 은 ~10분이면 만료돼요 — 본문에 URL을 저장하면 만료 후 이미지를 읽을 수 없어요. 참조(`attachment://{id}`)만 저장하고, 렌더 시점에 상세 응답(§26)의 `attachments[]`에서 `id`→`url`(그때그때 새로 발급된 presigned GET)로 해석해요.
+- **옛 글 하위호환**: 편집기를 바꾸기 전에 쓴 관리자 글은 markdown, 앱 회원 글은 평문이에요. 저장 형식을 열로 구분하지 않으므로 렌더러(`PostBody`)가 **본문을 보고 갈라요** — 앞쪽 공백을 제외한 첫 글자가 `<`이면 HTML(게시용 변환 → 허용목록 정화 → 렌더), 아니면 markdown 으로 렌더해요(평문도 문단으로 안전하게). 「고치기」는 운영자가 쓴 HTML 글에만 열려요 — markdown·평문을 편집기에 실으면 파서가 원문을 HTML 로 해석해 저장하는 순간 되돌릴 수 없어서요.
 - **작성 주체 필드**: `authorType`(`'USER'` | `'ADMIN'`)이 작성 주체를 구분하고, `authorType='ADMIN'`이면 `authorUserId=null` + `authoredBy`=콘솔 계정 email 이에요(§25 스키마 참고).
 
 ### [39] `POST /api/admin/apps/{slug}/content`
@@ -705,7 +734,7 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 게시물 수정 — `board`/`title`/`body`/`properties`를 교체하고 첨부를 재연관해요. **작성자(`authorType`/`authoredBy`)·상태는 불변**이에요. 클라이언트 함수는 `updatePost`. 권한은 §39와 동일하게 `PERM_CONTENT_MODERATE`(PUT matcher).
 
-- **Request body**: §39와 동일(`AdminPostWriteBody`). `attachmentIds`는 수정에선 **그 글이 가져야 할 첨부 전체**예요(백엔드 `AttachmentPort.syncAssociations`) — 목록에 없는 첨부는 떼어져요(soft-delete, 30일 안에 파일 화면에서 복원 가능). 본문·`properties` 에 `attachment://{id}` 로 남아 있는 첨부는 목록에 없어도 지켜져요. 필드를 생략(`null`)하면 첨부를 손대지 않고, 빈 배열(`[]`)은 전부 떼어냄이라 뜻이 달라요. 콘솔은 **본문의 참조 + 제목 배너 + 불러올 때 본문 밖에 있던 첨부**를 보내요 — 편집기에서 지운 사진만 떼어지고, 보이지 않던 첨부는 수정으로 사라지지 않아요. 회원(`authorType='USER'`) 글은 서버가 첨부 동기화를 건너뛰어요(`attachmentIds` 무시) — 콘솔도 회원 글은 편집기로 열지 않아요.
+- **Request body**: §39와 동일(`AdminPostWriteBody`). `attachmentIds`는 수정에선 **그 글이 가져야 할 첨부 전체**예요(백엔드 `AttachmentPort.syncAssociations`) — 목록에 없는 첨부는 떼어져요(soft-delete, 30일 안에 파일 화면에서 복원 가능). 본문·`properties` 에 `attachment://{id}` 로 남아 있는 첨부는 목록에 없어도 지켜져요. 필드를 생략(`null`)하면 첨부를 손대지 않고, 빈 배열(`[]`)은 본문과 `properties`에서 참조하지 않는 첨부를 분리하므로 뜻이 달라요. 콘솔은 **본문의 참조 + 제목 배너 + 불러올 때 본문 밖에 있던 첨부**를 보내요 — 편집기에서 지운 사진만 떼어지고, 보이지 않던 첨부는 수정으로 사라지지 않아요. 회원(`authorType='USER'`) 글은 서버가 첨부 동기화를 건너뛰어요(`attachmentIds` 무시) — 콘솔도 회원 글은 편집기로 열지 않아요.
 - **Response**: 갱신된 `AdminPostDetail`
 - **감사**: `admin.content.update`.
 - **에러**: 게시물 없음 → `404 ADMIN_022`. 슬러그 없음 → `404 ADMIN_003`. 첨부 연관 실패 → `400 ADMIN_023`.
@@ -740,7 +769,7 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ### [44] `GET /api/admin/apps/{slug}/app-versions`
 
-해당 앱의 iOS/Android 최소버전(강제 업데이트) 규칙(최대 2행, 플랫폼 순 정렬). 권한 `PERM_APPS_READ`. 클라이언트 함수는 `getAppVersions(slug)`.
+해당 앱의 iOS/Android 최소버전(강제 업데이트) 규칙(최대 2행, 플랫폼 순 정렬). 권한은 `PERM_APP_VERSION_READ`예요. 클라이언트 함수는 `getAppVersions(slug)`예요. GET은 해당 slug로 저장된 규칙을 조회하며, PUT의 등록 slug 검증과 구분해요.
 
 - **Response**: `AppVersionRule[]` — `slug` 는 path 로만 특정되므로 이 타입엔 없어요.
   ```ts
@@ -764,6 +793,8 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 - **캐시**: 저장 성공 시 서버 캐시(`DbAppVersionResolver`, TTL 30초)를 즉시 evict해서 다음 요청부터 곧바로 반영돼요.
 - **프론트 게이팅**: `rbac.ts`의 `NAV_PERM['/app-versions']`는 read=`PERM_APP_VERSION_READ`, write=`PERM_APP_VERSION_WRITE`로 **분리**돼 있어요 — 읽기 권한만 있는 역할(mock 기본 grant 의 admin)은 화면을 보되 사용 토글·저장 버튼이 잠겨요. 두 권한 모두 없으면 메뉴 자체가 안 보여요.
 - **미리보기**: 화면은 저장 전에도 입력(message·forceMinVersion·warnMinVersion·storeUrl)을 실시간 반영해요 — 두 사용자 화면(강제=닫을 수 없는 차단 다이얼로그 / 경고=닫을 수 있는 안내)을 **세그먼트 탭**으로 직접 골라 봐요. API 계약과는 무관한 순수 프론트 UX예요.
+
+<a id="시맨틱--실제-게이트"></a>
 
 ### 시맨틱 — 실제 게이트
 
@@ -849,6 +880,8 @@ soft-delete(`→ DELETED`) — 사유 필수, `purgeAt = now + 30일`에 purge �
 
 ---
 
+<a id="발송메시징---mock-전용-백엔드-미구현"></a>
+
 ## 발송(메시징) — ⚠ mock 전용 (백엔드 미구현)
 
 발송 화면(`/send`)은 아래 6개 엔드포인트에 **실제로 배선**돼 있지만, `template-spring`엔 아직 대응 컨트롤러가 없어요 — **mock(MSW)에서만 동작**하고, 실서버 모드에선 404가 나요. 백엔드 구현이 따라오면 이 절이 §50+ 로 승격될 예정이에요. 그때까지는 계약(경로·DTO)이 mock 쪽 단독 정의라는 걸 감안하고 보세요.
@@ -882,19 +915,21 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 
 ## 에러 코드
 
+<a id="admin-전용-adminerror-백엔드-core-admin-impl--admin_001admin_028"></a>
+
 ### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_028`
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
 | `ADMIN_001` | 401 | `INVALID_CREDENTIALS` | 이메일 또는 비밀번호가 올바르지 않아요 (로그인 실패) |
 | `ADMIN_002` | 400 | `UNSUPPORTED_METRIC` | `analytics/{metric}`의 `metric`이 지원 목록(`dau`/`signups`/`revenue`/`refunds`/`net`/`failures`)에 없음 |
-| `ADMIN_003` | 404 | `UNKNOWN_SLUG` | 슬러그를 찾을 수 없음 — 슬러그를 받는 **모든** admin 엔드포인트 공통 |
+| `ADMIN_003` | 404 | `UNKNOWN_SLUG` | 앱을 찾을 수 없음. 적용 조건은 각 엔드포인트를 확인해요(앱 버전 PUT은 별도 검증) |
 | `ADMIN_004` | 400 | `INVALID_DATE_RANGE` | `from`/`to`가 ISO-8601 형식이 아님 (billing/audit-logs/analytics) |
 | `ADMIN_005` | 404 | `USER_NOT_FOUND` | 사용자 상세/조회 시 해당 `userId` 없음 |
 | `ADMIN_006` | 400 | `PG_REFUND_ONLY` | 환불 대상 결제가 PG 채널이 아님(IAP 는 스토어 환불) |
 | `ADMIN_007` | 404 | `PAYMENT_NOT_FOUND` | 환불 대상 `paymentId`에 해당하는 결제가 없음 |
-| `ADMIN_008` | 400 | `FILE_ALREADY_QUARANTINED` | 이미 검역된 파일을 다시 검역 시도 |
-| `ADMIN_009` | 400 | `FILE_NOT_QUARANTINED` | 검역되지 않은 파일을 복원 시도 |
+| `ADMIN_008` | 400 | `FILE_ALREADY_QUARANTINED` | 이미 격리된 파일을 다시 격리 시도. 현재는 Mock에서 사용해요 |
+| `ADMIN_009` | 400 | `FILE_NOT_QUARANTINED` | 격리되지 않은 파일을 복원 시도. 현재는 Mock에서 사용해요 |
 | `ADMIN_010` | 404 | `FILE_NOT_FOUND` | 검역/복원/삭제/열람 대상 파일 없음 |
 | `ADMIN_011` | 409 | `ADMIN_EMAIL_EXISTS` | 관리자 계정 생성 시 이미 사용 중인 이메일 |
 | `ADMIN_012` | 404 | `ADMIN_ACCOUNT_NOT_FOUND` | `/admins/{id}` 대상 관리자 계정 없음 |
@@ -911,7 +946,6 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 | `ADMIN_023` | 400 | `ATTACHMENT_ASSOCIATION_FAILED` | 작성/수정(§39~§40) 시 `attachmentIds` 연관 확정 실패 — 첨부 부재·slug 불일치·비 ACTIVE·이미 타 게시물에 연관(탈취 시도) |
 | `ADMIN_024` | 400 | `USER_ALREADY_DELETED` | 이미 탈퇴 처리된 사용자를 다시 삭제 시도(§43) |
 | `ADMIN_025` | 410 | `USER_ERASED` | 유예 만료로 이미 완전삭제(익명화)된 사용자의 export·삭제 시도(§42~§43) |
-
 | `ADMIN_026` | 403 | `ADMIN_PERM_GRANT_FORBIDDEN` | 본인이 보유하지 않은 권한 부여 시도 |
 | `ADMIN_027` | 403 | `FILE_KIND_FORBIDDEN` | 대상 파일 종류의 권한 없음 |
 | `ADMIN_028` | 429 | `ADMIN_ACCOUNT_LOCKED` | 로그인 실패 누적으로 계정 잠금. `Retry-After` 헤더와 `details.retryAfterSeconds`로 남은 초를 전달해요 |
@@ -933,6 +967,8 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 
 ## 시맨틱 노트
 
+<a id="gross--net-정의-빌링"></a>
+
 ### gross / net 정의 (빌링)
 
 `payment_history.status`는 환불 시 `PAID` → `REFUNDED`(전액) 또는 `PARTIALLY_REFUNDED`(부분, §17)로 **덮어써요** (별도 플래그가 아니라 상태 자체가 뒤집힘). 그래서:
@@ -941,6 +977,8 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 - **`refunded` = `payment_refunds` 원장(§18)에서 건별 `refunded_at`이 기간에 속하는 `amount` 합** — 부분환불은 `refunded_amount < amount`. `payment_history.amount`를 합하면 부분환불을 전액환불로 과다 집계하고, 누적 `refunded_amount`는 `refunded_at`이 마지막 값이라 다회 환불의 기간 귀속이 틀어져서, 반드시 원장 건별로 집계해요.
 - **`net`(순매출) = `gross - refunded`**
 - 대시보드(§4)·앱 metrics(§6)·billing(§7)·revenue 시계열(§13) 전부 이 시맨틱을 따라요.
+
+<a id="dau--mau--실데이터-기반-user_activity_days"></a>
 
 ### DAU / MAU — 실데이터 기반 (`user_activity_days`)
 
@@ -957,18 +995,29 @@ DAU/MAU는 더미가 아니라 **진짜 활동 기록**이에요. 백엔드에 �
 
 - **코호트 정의**: 가입일 기준 상대일 — D1 코호트는 가입일이 `[-15, -2]`일 구간, D7 코호트는 `[-21, -8]`일 구간(오늘 기준). 즉 "정확히 지금으로부터 N일 전 가입자"가 아니라, "가입 후 N일째가 이미 지난" 유저들의 집합이에요.
 - **생존 판정**: 코호트에 속한 유저가 `user_activity_days`에 `가입일 + N일` 행이 있으면 "생존"으로 카운트.
-- **값**: 코호트 크기 대비 생존 비율 %, 소수 1자리. **코호트 크기가 0이면 `null`**(정상 케이스 — 신설 지표라 아직 데이터가 안 쌓인 상태를 뜻해요. `retentionD1`이 `null`이면 `retentionD7`도 항상 `null`이에요 — D7은 D1보다 더 늦게 채워지니까요).
+- **값**: 코호트 크기 대비 생존 비율 %, 소수 1자리. 해당 코호트가 비어 있으면 `null`이에요. D1과 D7은 서로 다른 코호트를 조회하므로 D1이 `null`이어도 D7에는 값이 있을 수 있어요.
 - 화면(앱 상세 개요탭의 `OpsSignalCards`)은 `null`을 "— (데이터 수집 중)"으로 표시해요 — 에러가 아니라 정상 대기 상태로 다뤄야 해요.
+
+<a id="mock--실서버-토글"></a>
 
 ### Mock ↔ 실서버 토글
 
-`.env`의 `VITE_USE_MOCK`이 유일한 스위치예요.
+실행 명령과 환경 설정은 [파생 레포 가이드](../guide/derived-repo.md#3-mock--실서버-전환)에 모았어요. `factory` 자동 선택과 Vite 직접 실행은 설정을 읽는 방식이 달라요.
 
-- `true`(기본): `src/mocks/browser.ts`의 MSW 서비스워커가 브라우저에서 `/api/admin/*`를 가로채요. `BASE_URL`도 강제로 빈 문자열이라 항상 same-origin으로 요청이 나가고 MSW가 반드시 매치해요.
-- `false`: MSW 미기동, `VITE_API_BASE`(또는 Vite dev proxy의 `VITE_PROXY_TARGET`)로 실제 백엔드에 요청해요.
-- `./factory local start`는 `GET /api/admin/health`를 직접 curl로 프로브해서 이 값을 **자동** 결정해요 — 백엔드가 떠 있으면 실서버 모드, 없으면 mock 모드로 폴백하고 안내 메시지를 출력해요.
-- 두 모드가 스키마 드리프트 없이 동일하게 동작하는 건 `src/lib/types.ts`를 mock/실서버가 공유하기 때문이에요. **에러 코드도 백엔드 카탈로그에 맞춰 정합화돼 있어요** — 슬러그 404는 `ADMIN_003`, 사용자 404는 `ADMIN_005`로 mock 과 실서버가 같아요. (과거엔 mock 이 `APP_404`/`USR_404`라는 자체 코드를 썼지만 지금은 쓰지 않아요.) 다만 발송(§M1~§M6)은 백엔드 구현 전이라 **mock 전용**이니, 이 영역의 동작만은 실서버 계약으로 오해하지 마세요.
+### Mock ↔ 실서버 차이
 
+공통 API의 필드명을 맞춰 관리하지만 TypeScript 타입만으로 서버 응답의 일치를 보장하지는 못해요. 현재 주요 차이는 다음과 같아요.
+
+| 기능 | Mock | 실서버 |
+|---|---|---|
+| 발송·영수증 | 데모 응답. 실제 메시지·이메일 발송 없음 | 대응 엔드포인트 없음 |
+| 영수증 설정 | 메모리에 저장 | 저장 API 없음 |
+| 사용자 상태·멤버십, 파일 상세 필터 | 확장 필터 지원 | 일부 미지원. 화면에서 해당 입력 비활성화 |
+| 파일 식별자·격리 | 객체 키 형태, 격리 접두사 변경 | 첨부 ID 문자열, 상태 변경 |
+| 로그인 잠금·권한 부여 제한·파일 종류 권한 | 서버 정책을 모두 재현하지 않음 | 서버에서 검사 |
+| 시계열 interval | 요청값을 응답에 표시하지만 데이터는 일별 | `day` 고정 |
+
+실서버를 연결한 뒤에는 권한별 응답과 실패 경로도 확인해야 해요.
 ---
 
 ## 관련 문서
@@ -976,4 +1025,4 @@ DAU/MAU는 더미가 아니라 **진짜 활동 기록**이에요. 백엔드에 �
 - [`README.md`](./README.md) — 계약 문서 전체 구성 · 쌍 운영 규칙
 - [`../guide/screens.md`](../guide/screens.md) — 화면별 엔드포인트 사용처
 - [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring) — 백엔드 쪽 상세는 `docs/api-and-functional/admin-console.md`(§3 카탈로그가 이 문서와 같은 번호)
-- 설계 스펙 원문: `template-spring` 의 내부 설계문서 (gitignore — 저장소를 클론한 로컬의 `docs/superpowers/specs/` 에서만 열람)
+- 내부 설계 문서는 Git에 포함되지 않아요. 별도로 보유한 환경에서만 참고할 수 있어요.

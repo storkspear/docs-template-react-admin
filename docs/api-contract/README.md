@@ -1,67 +1,53 @@
 # API Contract
 
-`template-react-admin`과 짝 백엔드 [`template-spring`](https://github.com/storkspear/template-spring)의 admin 모듈(`core/core-admin-impl`, `/api/admin/*`) 간 **1:1 계약** 정리예요. 응답 스키마·에러 코드가 양쪽에서 **완전 동일**해요.
+`template-react-admin`과 [`template-spring`](https://github.com/storkspear/template-spring)의 관리자 API(`/api/admin/*`) 사이의 계약을 정리했어요. DTO 필드명을 양쪽에서 맞춰 사용하고, 별도 변환 계층을 두지 않는 방식이에요.
 
-> **왜 1:1?** `template-flutter` ↔ `template-spring`과 같은 이유예요 — 같은 개발자가 프론트와 백엔드를 함께 운영하는 앱 공장 전제라, Mapper 층을 두지 않고 DTO 필드명을 그대로 맞춰요. 백엔드 DTO(`AdminAccountResponse` 등)의 Javadoc에도 "필드명은 React `types.ts` 계약과 1:1(변경 금지)"라고 명시돼 있어요.
-
----
+프론트의 TypeScript 타입은 Java 서버 응답을 실행 중 검증하지 않아요. 공통 API의 필드와 오류 코드를 함께 관리하되, Mock 전용 기능과 서버에서만 적용하는 권한·잠금 정책은 구분해서 확인해야 해요.
 
 ## 문서 구성
 
-| 파일 | 내용 |
-|------|------|
-| [`admin-api.md`](./admin-api.md) | 엔드포인트 전체(백엔드 매핑 전부 + mock 전용 발송 — 개수·목록은 그 문서 서두의 실측 기준) — 요청 파라미터 · 응답 shape · 에러 코드 · 시맨틱 노트(gross/net, DAU/MAU, 리텐션) |
+[관리자 API](./admin-api.md)에 엔드포인트별 요청·응답, 권한, 오류와 집계 기준을 모았어요. 영수증과 발송처럼 Mock에서만 제공하는 기능도 그 문서에 표시해요.
 
-이 템플릿은 `template-flutter`처럼 도메인별로 문서를 쪼개지 않아요. Admin 콘솔은 **단일 계약 표면**(`/api/admin/*` 하나)이라 `admin-api.md` 한 파일에 전부 담겨 있어요.
-
-> **각주(후속 사이클 안내)**: 게시물 본문 계약(markdown + `![alt](attachment://{id})` 참조 — `admin-api.md` § "본문 계약")은 관리자 콘솔 전용이 아니라, 후속 사이클에서 `template-flutter` 앱의 게시물 렌더에도 동일하게 적용될 예정이에요.
-
----
+게시물 편집기는 HTML 본문과 `attachment://{id}` 참조를 사용해요. 기존 Markdown·일반 텍스트도 읽을 수 있어요. 저장 형식과 첨부 참조 규칙은 [본문 계약](./admin-api.md#본문-계약-html편집기-attachment)을 확인해주세요.
 
 ## 진실의 출처
 
-| 계층 | 파일 |
-|------|------|
-| 프론트 DTO (계약) | `src/lib/types.ts` |
-| 프론트 API 클라이언트 | `src/api/client.ts` |
-| Mock 구현 (개발용) | `src/mocks/handlers.ts`, `src/mocks/fixtures.ts` |
-| 백엔드 컨트롤러 | `template-spring`의 `core/core-admin-impl/.../controller/` |
-| 백엔드 에러 코드 | `AdminError.java`(`ADMIN_001`~`ADMIN_023` — 현행 전체 표는 [`admin-api.md`](./admin-api.md) "에러 코드" 절), `CommonError.java`(`CMN_004`/`CMN_005`/`CMN_006`) |
-| 설계 스펙 원문 | `template-spring` 의 내부 설계문서 (gitignore — 저장소를 클론한 로컬에서만 열람) |
+| 확인할 내용 | 원본 소스 |
+|---|---|
+| 프론트 타입 | `src/lib/types.ts` |
+| 요청 구성 | `src/api/client.ts` |
+| 개발용 Mock | `src/mocks/handlers.ts`, `src/mocks/fixtures.ts` |
+| 서버 요청·응답 | `template-spring/core/core-admin-impl/.../controller/` |
+| 서버 오류 | `AdminError.java`, `CommonError.java` |
 
-`src/lib/types.ts`의 인터페이스가 **프론트 쪽 계약의 진실**이에요 — mock과 실서버가 같은 타입을 공유해서 스키마 드리프트가 안 나요(`CLAUDE.md` §3 참고).
-
----
+설명과 구현이 다르면 해당 동작을 처리하는 소스를 기준으로 문서를 고쳐요. 내부 설계 문서는 Git에 포함되지 않으므로 저장소를 클론하는 것만으로 받을 수는 없어요.
 
 ## 쌍 운영 규칙
 
 ### 서버 변경 시
 
-1. 백엔드의 `AdminError.java`·컨트롤러 응답 DTO 수정
-2. 프론트의 `src/lib/types.ts`·`src/api/client.ts` **동시** 수정, `src/mocks/handlers.ts`/`fixtures.ts`도 같이 갱신(mock이 실 계약을 그대로 반영해야 하므로)
-3. 두 레포에 **같은 커밋 메시지**로 PR
-4. `npm run build`(`tsc -b`)가 타입 불일치를 잡아줘요. `npm test`(화면 스모크)는 `src/mocks/handlers.ts` 를 `msw/node` 로 그대로 재사용해 렌더 회귀만 막아요 — mock ↔ 실서버 응답 shape 대조는 여전히 자동화가 없으니 `VITE_USE_MOCK=false`로 붙여서 수동 확인하세요.
+1. 서버의 요청·응답 DTO, 오류 코드와 권한 조건을 수정해요.
+2. 프론트의 `types.ts`, `client.ts`, Mock과 사용하는 화면을 함께 맞춰요.
+3. 두 저장소에 같은 커밋 메시지로 PR을 만들어 관련 변경을 찾을 수 있게 해요.
+4. `npm run build`와 `npm test`를 실행하고, 실서버 모드에서도 바뀐 요청의 응답과 오류를 확인해요.
+
+빌드는 프론트 내부의 타입 관계를, Mock 기반 테스트는 화면과 클라이언트 동작을 검사해요. Mock과 실서버 응답을 자동으로 전수 비교하는 검사는 없으므로 실서버 확인을 대신하지 못해요.
 
 ### 프론트 변경 시
 
-- 프론트 단독으로 계약을 바꾸지 **마세요**. 백엔드에 요청 먼저.
-- 필드 추가·삭제는 반드시 백엔드 리드.
-
----
+프론트에서 필요한 필드가 달라지면 서버 계약부터 함께 검토해요. 화면만 먼저 바꿔 아직 없는 응답을 기대하지 않도록 해요.
 
 ## 계약 변경 시 확인 포인트
 
-- [ ] 양쪽 레포의 DTO/타입 파일 수정 확인 (`types.ts` ↔ 백엔드 `dto` 패키지)
-- [ ] `src/mocks/fixtures.ts`가 새 필드를 반영하는지(안 하면 mock 모드에서만 조용히 undefined)
-- [ ] 기존 화면 호환 (하위 호환 필드 추가 우선)
-- [ ] `npm run build` · `npm test` 그린
-- [ ] 문서 업데이트 (이 폴더)
-
----
+- [ ] 서버 DTO와 프론트 타입의 필드·null 허용 여부가 맞아요.
+- [ ] Mock 데이터와 처리 코드가 변경을 반영해요.
+- [ ] 기존 화면과 권한별 동작이 유지돼요.
+- [ ] 빌드·테스트와 실서버의 성공·오류 응답을 확인했어요.
+- [ ] API 문서에 지원 범위와 변경 내용을 반영했어요.
 
 ## 관련 문서
 
-- [`admin-api.md`](./admin-api.md) — 엔드포인트 전체 계약
-- [`../guide/screens.md`](../guide/screens.md) — 화면이 각 엔드포인트를 어떻게 쓰는지
-- [`짝 백엔드: template-spring`](https://github.com/storkspear/template-spring)
-- 설계 스펙: `template-spring` 의 내부 설계문서 — gitignore 라 GitHub 에 공개돼 있지 않아요. 저장소를 클론한 로컬에서 `docs/superpowers/specs/` 를 보세요 (구현은 `main` 병합 완료).
+- [관리자 API](./admin-api.md)
+- [화면 가이드](../guide/screens.md)
+- [Mock·실서버 실행](../guide/derived-repo.md#3-mock--실서버-전환)
+- [백엔드 소스](https://github.com/storkspear/template-spring)

@@ -9,8 +9,8 @@
       "files": [
         {
           "path": "README.md",
-          "title": "Overview",
-          "desc": "문서 구성 · 읽는 순서 · 짝 백엔드(template-spring) 안내"
+          "title": "문서 안내",
+          "desc": "목적에 맞는 문서와 읽는 순서"
         }
       ]
     },
@@ -19,13 +19,13 @@
       "files": [
         {
           "path": "api-contract/README.md",
-          "title": "API Contract",
-          "desc": "template-spring 과의 1:1 계약 구성 · 쌍 운영 규칙 · 진실의 출처"
+          "title": "계약 관리",
+          "desc": "서버·프론트 계약을 바꿀 때 확인할 파일과 검증 순서"
         },
         {
           "path": "api-contract/admin-api.md",
-          "title": "Admin API",
-          "desc": "엔드포인트 전체 상세 계약 — spring 카탈로그 정합 38섹션 · RBAC · 에러 코드"
+          "title": "관리자 API",
+          "desc": "요청·응답, 권한, 오류와 Mock 지원 범위"
         }
       ]
     },
@@ -35,27 +35,27 @@
         {
           "path": "guide/screens.md",
           "title": "화면 가이드",
-          "desc": "화면별 API · RBAC · 모바일 대응 정리 (메뉴 12 + 상세 라우트)"
+          "desc": "화면별 기능, API, 권한과 모바일 동작"
         },
         {
           "path": "guide/derived-repo.md",
-          "title": "파생 레포 체크리스트",
-          "desc": "factory CLI 흐름 · 브랜딩 · 메뉴 구성 · Mock→실서버 전환"
+          "title": "파생 레포 가이드",
+          "desc": "설치, 브랜딩, 메뉴 구성과 서버 연결"
+        },
+        {
+          "path": "guide/deployment.md",
+          "title": "홈서버 배포",
+          "desc": "환경 설정, 배포 확인과 정리"
         }
       ]
     },
     {
-      "name": "Reference",
+      "name": "레퍼런스",
       "files": [
         {
           "path": "reference/environment.md",
-          "title": "Environment",
-          "desc": "프레임워크 · 라이브러리 버전표 (정본 package.json)"
-        },
-        {
-          "path": "reference/environment-ui.md",
-          "title": "Environment UI",
-          "desc": "기술 스택 한눈 다이어그램 (아이콘)"
+          "title": "개발 환경",
+          "desc": "기술 스택 그림, 버전표와 이관 시 확인 사항"
         }
       ]
     }

@@ -1,60 +1,39 @@
 # 파생 레포 체크리스트 (심화판)
 
-`CLAUDE.md` §8의 체크리스트를 단계별로 풀어썼어요. "Use this template"으로 새 레포를 만든 직후부터, 실서버 연결까지 순서대로 따라가면 돼요.
+"Use this template"으로 저장소를 만든 뒤 설치, 브랜딩, 메뉴 구성, 서버 연결 순서로 설정해요. 이미 운영 중인 앱에 화면을 추가한다면 4절부터 읽어도 돼요.
 
 ---
+
+<a id="0-첫-셋업--factory-cli"></a>
 
 ## 0. 첫 셋업 — factory CLI
 
 ```bash
 git clone git@github.com:<org>/<your-admin>.git && cd <your-admin>
 ./factory install              # ~/.local/bin/<repo명> symlink 등록 (이후 <repo명> 으로 어디서든 호출)
-<repo명> local init             # .env 생성(.env.example 복사, 있으면 보존) + npm install
+<repo명> local init             # .env 백업·복원 또는 예제 복사 + npm install
 <repo명> local start            # 백엔드(GET /api/admin/health) 프로브 → 있으면 실서버, 없으면 mock 자동 기동
 ```
+
+`local init`은 기존 `.env`가 있으면 보존하고 저장소 밖 백업을 갱신해요. 파일이 없으면 백업에서 복원하거나 `.env.example`을 복사한 뒤 의존성을 설치해요. `gh`와 `origin`이 있고 `.env`에 `GHCR_TOKEN`이 설정돼 있으면 해당 저장소의 GitHub Secret도 등록해요. 로컬 실행에 이 토큰이 필요한 것은 아니에요.
 
 `local`은 이 레포 기준 기본 env라 `<repo명> start`, `<repo명> test`로 줄여 써도 동일해요. `local start`가 백엔드를 못 찾으면 "백엔드 미연결 → mock 데이터로 실행합니다" 안내 후 mock으로 폴백하니, **처음엔 백엔드 없이도 전 화면을 바로 시연**할 수 있어요.
 
 `dev start`는 `.env`의 `VITE_PROXY_TARGET_DEV`를 프로브 대상으로 써요(미설정 시 에러 안내). `prod start`는 로컬 dev 서버로 안 붙고 정적 배포 안내만 출력해요 — prod는 `npm run build` 결과물을 호스팅에 올리는 방식이에요.
 
+<a id="devprod-배포--repo-dev-deploy--repo-prod-deploy-mac-mini-nginx--cloudflare-tunnel"></a>
+
 ### dev/prod 배포 — `<repo> dev deploy` / `<repo> prod deploy` (Mac mini nginx + Cloudflare Tunnel)
 
-홈서버(Mac mini)에 관리자 콘솔을 정적 배포하는 한 방 명령이에요 (`tools/deploy.sh <dev|prod>`).
-같은 스크립트가 target 인자로 dev(`dev-admin.<domain>`)와 prod(`admin.<domain>`)를 함께 다뤄요 —
-env 파일만 다를 뿐(`dev` = `.env`, `prod` = `.env.prod`) 빌드·rsync·nginx·Cloudflare 흐름은 동일해요.
-
-1. env 파일의 "dev 배포"(`.env.example`) / "prod 배포"(`.env.prod.example` → `.env.prod`) 절 키를 채워요:
-   `BASE_DOMAIN` · `DEPLOY_HOST`(Tailscale IP 권장) · `DEPLOY_SSH_USER` · `CLOUDFLARE_API_TOKEN`
-   (+ 선택: `ADMIN_SUBDOMAIN`(dev 기본 dev-admin / prod 기본 admin) · `BACKEND_SUBDOMAIN`(dev 기본
-   dev-server / prod 기본 server) · `VITE_USE_MOCK`(dev 기본 true / prod 기본 false)).
-   `.env.prod` 는 `.gitignore` 로 보호돼요 — `CLOUDFLARE_API_TOKEN` 같은 실 비밀이 들어가니 커밋 금지.
-
-   여기에 더해 **사전 조건 두 개**가 있어요. 둘 다 도그푸딩에서 실제로 걸려 배포가 멈췄던 것들이고, dev·prod 공통이에요.
-
-   - **배포 키 pin** — env 파일에 `SSH_KEY=~/.ssh/deploy_key`(경로) 또는 `SSH_PRIVATE_KEY`(PEM 본문)
-     중 하나를 넣어요. 없으면 ssh 가 로컬 `~/.ssh` 와 ssh-agent 의 무관한 키를 순서대로 들이밀다
-     서버 `MaxAuthTries`(기본 6)를 넘겨 `Too many authentication failures` 로 끊겨요. GitHub 용
-     키가 몇 개만 깔려 있어도 배포 키가 시도되기 전에 거부돼요.
-   - **nginx 조작 권한** — nginx 를 root 로 돌리는 호스트에서는 배포 계정이 conf 쓰기 · `nginx -t` ·
-     `nginx -s reload`(root master 에 시그널)를 못 해요. **가장 안전한 건 nginx 를 배포 계정(비특권)
-     으로 돌려 sudo 를 아예 없애는 것**이에요(`servers` 디렉토리·`var/run`·`var/log/nginx` 를 계정
-     소유로 chown 한 뒤 `brew services` 로 사용자 도메인 재기동 — 단 사용자 LaunchAgent 는 콘솔 로그인
-     세션이 필요해 SSH 전용 헤드리스에선 실패할 수 있어요). root 유지가 불가피하면 `NGINX_SUDO=1` +
-     **인자를 못박은** 무암호 sudoers(`NOPASSWD: nginx -t, nginx -s reload` — 무제한 인자면 `nginx -c`
-     로 임의 모듈 로드=root 실행이 되니까) + conf 디렉토리만 계정 소유로 chown 하되, **그 경우 배포
-     계정이 사실상 root 와 동등**해진다는 잔여위험을 알고 써요. `dev/prod deploy` 가 막힌 항목을
-     이름으로 나열하고 이 안내를 띄워요.
-2. `<repo> dev deploy` / `<repo> prod deploy` — 빌드 → rsync → **nginx server block 생성**(SPA fallback + same-origin `/api` 를 로컬 kamal-proxy 로 Host 리라이트 프록시 — CORS 불필요) → **Cloudflare DNS·터널 ingress 등록**(멱등) → 헬스체크까지 한 번에. 두 target 은 서로 다른 FQDN·nginx server block·Cloudflare ingress 를 쓰므로 독립적으로 배포돼요(같은 Mac mini·같은 터널을 공유해도 서로 건드리지 않음).
-3. **mock ↔ 실서버 전환**: 해당 env 파일의 `VITE_USE_MOCK` 만 바꾸고 같은 명령 재실행 — Vite 는 빌드타임 주입이라 재빌드+재배포가 정석이에요. 빌드에 들어가는 `VITE_API_BASE` 도 그 env 파일이 정해요(없으면 빈값 = same-origin `/api`). Vite 는 mode 와 무관하게 레포의 `.env` 도 읽기 때문에, 스크립트가 셸 환경변수로 못 박아 prod 빌드에 로컬 값이 섞이지 않게 해요.
-   - **응답 헤더·캐시**: 생성되는 nginx server block 은 `Content-Security-Policy`·`X-Content-Type-Options: nosniff`·`X-Frame-Options: DENY`·`Referrer-Policy`·`Permissions-Policy` 를 `always` 로 붙여요(4xx·5xx 에도). `index.html` 과 MSW 워커는 `no-store`, 해시가 붙은 `/assets/` 는 `immutable` 1년이에요. CSP 기본값은 `tools/deploy.sh` 의 `DEFAULT_CSP`(자기 번들·jsDelivr 글꼴·presigned 미디어 `https:`·YouTube/draw.io 프레임)이고, 다른 출처를 열어야 하면 env 파일의 `NGINX_CSP` 로 통째 바꿔요.
-   - **헬스체크는 판정**이에요: SPA 셸(재시도 `HEALTH_TRIES`회)·CSP 헤더·실서버 빌드면 `/api/admin/health` 까지 확인하고, 하나라도 실패하면 종료 코드가 0 이 아니에요. mock 빌드에서 백엔드가 없는 것만 경고로 넘어가요.
-4. `<repo> dev clear` / `<repo> prod clear` — 정확한 역방향(ingress·DNS·nginx block·산출물 제거). 같은 서버의 다른 정적 사이트와 cloudflared 데몬, 그리고 반대쪽 target 은 절대 건드리지 않아요.
+홈서버 배포와 정리 절차는 [배포 가이드](./deployment.md)에 모았어요. `dev`는 `.env`, `prod`는 `.env.prod`를 읽어요. SSH·nginx 권한과 Cloudflare 설정을 준비한 뒤 해당 환경의 명령을 실행해주세요.
 
 ---
 
+<a id="1-브랜딩--appconfigts--moodsts--palettets--favicon"></a>
+
 ## 1. 브랜딩 — appConfig.ts / moods.ts / palette.ts / favicon
 
-이것들을 바꾸면 로고 워드마크·로그인 화면·그리드·차트·브라우저 탭까지 전부 따라와요. 코드 어디에도 이 값들을 하드코딩하면 안 돼요 — 항상 이 파일들 참조. **UI 테마 색(antd·ag-grid·사이드바·로그인 그라디언트)의 단일 소스는 `src/lib/moods.ts`의 무드**예요 — 4종(Obsidian·Blurple·Ember·Glacier) 중 선택하거나 커스텀 무드를 추가하세요(`CLAUDE.md` §3).
+앱 이름과 소개는 `appConfig.ts`, UI 테마는 `moods.ts`, 테마와 무관한 보조색은 `palette.ts`에서 관리해요. 컴포넌트에 값을 따로 적지 않고 이 설정을 참조해요. 테마는 Obsidian·Blurple·Ember·Glacier 중 선택하거나 추가할 수 있어요. 정적 파일인 `index.html`과 favicon은 별도로 수정해야 해요.
 
 ### `src/appConfig.ts`
 
@@ -83,7 +62,9 @@ export const brand = {
 export const PRIMARY = brand[600]   // 무드와 독립적인 보조색
 ```
 
-`brand` 스케일은 이제 **차트 기본색·종이(본문) 액센트 같은 무드 무관 보조색**에만 쓰여요 — antd `ConfigProvider` 테마(`lib/theme.ts`)·ag-grid 테마(`lib/agGrid.ts`)·로그인 그라디언트·`ComponentsPage` 스와치는 `moods.ts`의 무드에서 파생돼요(2026-07 디자인 리프레시). **hex를 컴포넌트에 직접 쓰지 마세요** — `brand[N]` / `semantic.*` / `alpha(hex, a)`를 참조하세요(`CLAUDE.md` §6 컨벤션).
+`brand` 스케일은 이제 **차트 기본색·종이(본문) 액센트 같은 무드 무관 보조색**에만 쓰여요 — antd `ConfigProvider` 테마(`lib/theme.ts`)·ag-grid 테마(`lib/agGrid.ts`)·로그인 그라디언트·`ComponentsPage` 스와치는 `moods.ts`의 무드에서 파생돼요(2026-07 디자인 리프레시). 컴포넌트에서는 색상 값을 직접 적는 대신 `brand[N]`, `semantic.*`, `alpha(hex, a)`를 사용해요.
+
+<a id="publicfaviconsvg-예외--정적-파일이라-별도-수정"></a>
 
 ### `public/favicon.svg` (예외 — 정적 파일이라 별도 수정)
 
@@ -98,9 +79,11 @@ export const PRIMARY = brand[600]   // 무드와 독립적인 보조색
 
 ---
 
+<a id="2-메뉴-구성--navtsx"></a>
+
 ## 2. 메뉴 구성 — nav.tsx
 
-`src/nav.tsx`의 `NAV_ITEMS`가 라우트·사이드바 메뉴·활성 표시(선택된 메뉴 강조)의 **단일 소스**예요. 이 배열 하나만 고치면 `App.tsx`(라우팅)와 `AppLayout`(사이드바)이 자동으로 따라와요 — 그 둘을 직접 손댈 필요 없어요.
+`src/nav.tsx`의 `NAV_ITEMS`가 라우트·사이드바 메뉴·활성 표시(선택된 메뉴 강조)의 **단일 소스**예요. `App.tsx`와 `AppLayout`이 이 배열을 읽어 라우트와 메뉴를 구성해요. 접근을 제한할 화면은 `src/lib/rbac.ts`의 `NAV_PERM`에도 권한을 연결하고, 버튼과 서버 API의 권한 검사도 확인해주세요. 메뉴 등록만으로 서버 권한이 추가되지는 않아요.
 
 ```tsx
 export const NAV_ITEMS: NavItem[] = [
@@ -119,49 +102,55 @@ export const NAV_ITEMS: NavItem[] = [
 
 ---
 
+<a id="3-mock--실서버-전환"></a>
+
 ## 3. Mock → 실서버 전환
 
-기본은 **MSW mock**이라 백엔드 없이 전 화면이 동작해요. 실서버가 준비되면 코드 한 줄 안 고치고 `.env`만 바꾸면 돼요.
+개발 실행은 `factory`의 자동 선택과 Vite 직접 실행 중 하나를 사용해요. 발송·영수증 등 [Mock 전용 기능](../api-contract/admin-api.md#mock--실서버-차이)은 실행 모드만 바꾼다고 실서버에서 제공되지는 않아요.
 
-```bash
-# .env (또는 .env.local)
+**factory로 실행할 때**는 `.env`에 프로브 대상을 설정해요.
 
-# 로컬 dev 서버에서 Vite 프록시가 /api 를 전달할 백엔드 주소
+```dotenv
 VITE_PROXY_TARGET=http://localhost:8081
-
-# dev 환경 백엔드 (factory dev start 의 프로브 대상)
 VITE_PROXY_TARGET_DEV=https://api-dev.example.com
-
-# 프록시 없이 절대 URL 로 직접 호출할 때만 (CORS 는 백엔드 책임)
-# VITE_API_BASE=
-
-# 수동으로 강제 지정하고 싶을 때만 — 보통은 factory 가 프로브해서 자동 결정하니 비워두세요
-# VITE_USE_MOCK=false
 ```
 
-**권장 흐름**: `VITE_USE_MOCK`을 직접 만지지 말고 `<repo명> local start`를 쓰세요 — `GET /api/admin/health`를 curl로 프로브해서 백엔드가 살아있으면 `VITE_USE_MOCK=false`로, 없으면 `true`(mock)로 **자동** 기동해요. 헤더의 MOCK 배지로 현재 모드가 표시돼요.
+`./factory local start`는 로컬 주소의 `GET /api/admin/health`를 확인해 실서버·Mock 모드를 결정해요. `./factory dev start`는 `VITE_PROXY_TARGET_DEV`를 확인하고, `--mock`을 붙이면 Mock으로 실행해요. 이 경로에서는 `.env`의 `VITE_USE_MOCK` 값을 그대로 따르지 않아요. 헤더의 MOCK 배지로 실행 모드를 확인할 수 있어요.
+
+**Vite를 직접 실행할 때**는 `.env.local` 등에 값을 설정하고 `npm run dev`를 실행해요.
+
+```dotenv
+VITE_PROXY_TARGET=http://localhost:8081
+VITE_USE_MOCK=false
+# 프록시 없이 절대 URL을 호출할 때만 설정해요. 서버의 CORS 설정도 필요해요.
+# VITE_API_BASE=https://api.example.com
+```
+
+배포된 정적 파일의 설정은 [배포 가이드](./deployment.md)를 따라 바꿔요. Vite 설정은 빌드할 때 반영되므로 다시 빌드하고 배포해야 해요.
 
 전환 시 확인할 것:
 
 - [ ] `src/lib/types.ts`의 DTO가 실제 백엔드 응답 필드와 1:1인지 (`docs/api-contract/admin-api.md` 대조)
 - [ ] `src/mocks/fixtures.ts`의 슬러그(`tradelog`/`gymlog`/`moodlog`)는 데모용 — 실서버 전환 후엔 무시되니 그대로 둬도 무방하지만, 로컬 mock 데모용 문구는 이 앱 도메인에 맞게 바꿔도 좋아요
 - [ ] 로그인 자격증명이 실서버 admin 계정으로 바뀌었는지 (mock 전용 데모 계정 `master@example.com`/`password` — 이메일 프리픽스 `viewer@`/`support@`/`admin@`/`master@`로 역할이 결정되는 규칙 포함 — 안내 문구는 `USE_MOCK`일 때만 노출되니 신경 안 써도 됨 — `LoginPage.tsx` 참고)
-- [ ] `npm run build` · `npm test` 그린
+- [ ] `npm run build` · `npm test` 통과
 
 ---
 
 ## 4. 화면 추가 패턴
 
+<a id="그리드형목록-화면--가장-흔한-패턴"></a>
+
 ### 그리드형(목록) 화면 — 가장 흔한 패턴
 
-`GridPage` + `AdminDataGrid` + `useAdminList` 세 조합이면 **PC 페이지네이션 / 모바일 무한스크롤 + 카드 목록**이 전부 자동으로 배선돼요.
+`GridPage`, `AdminDataGrid`, `useAdminList` 조합으로 PC 페이지네이션과 모바일 무한스크롤을 구성해요. 아래는 구조를 보여주는 예제예요. `Xxx`, `getXxx`, `xxxColumns`와 필터 입력은 해당 화면에 맞게 정의해야 해요. 앱을 선택하기 전에는 조회를 비활성화해요.
 
 ```tsx
 // src/pages/XxxPage.tsx
 import { useState } from 'react'
-import { Form, Input } from 'antd'
+import { Empty, Form } from 'antd'
 import { useAdminList } from '../lib/useAdminList'
-import { useAppOptions } from '../lib/useAppOptions'
+import { useAppContext } from '../lib/appContext'
 import GridPage from '../components/GridPage'
 import AdminDataGrid from '../components/AdminDataGrid'
 import QueryErrorState from '../components/QueryErrorState'
@@ -170,13 +159,16 @@ import type { Xxx } from '../lib/types'  // types.ts 에 DTO 추가 필요
 
 export default function XxxPage() {
   const [form] = Form.useForm()
-  const { options } = useAppOptions()      // 앱 셀렉트는 하드코딩 금지, 항상 이 훅
-  const [filters, setFilters] = useState<{ slug?: string; query?: string }>({})
+  const { slug } = useAppContext()
+  const [filters, setFilters] = useState<{ query?: string }>({})
 
   const list = useAdminList<Xxx>({
-    key: ['xxx', filters],
-    fetchPage: (page, size) => getXxx({ ...filters, page, size }),
+    key: ['xxx', slug, filters],
+    fetchPage: (page, size) => getXxx(slug as string, { ...filters, page, size }),
+    enabled: !!slug,
   })
+
+  if (!slug) return <Empty description="상단에서 앱을 선택하세요" />
 
   return (
     <GridPage
@@ -189,7 +181,7 @@ export default function XxxPage() {
         <QueryErrorState error={list.error} title="목록 오류" onRetry={list.refetch} />
       ) : (
         <AdminDataGrid<Xxx>
-          columns={xxxColumns}          // ag-grid ColDef[] — 별도 lib/xxxColumns.tsx 로 분리 권장
+          columns={xxxColumns}          // 이 화면에 맞는 ColDef<Xxx>[]를 정의해요
           rowData={list.rows}
           loading={list.loading}
           getRowId={(p) => String(p.data.id)}
@@ -203,6 +195,8 @@ export default function XxxPage() {
 
 - 컬럼 정의(`ColDef[]`)는 `userColumns.tsx`처럼 `src/lib/xxxColumns.tsx`로 분리하면 여러 화면(목록 최상위 + 상세 탭)에서 재사용하기 좋아요.
 - 앱 슬러그를 고르는 셀렉트가 필요하면 **항상 `useAppOptions()`**를 쓰세요 — 앱 목록이 하드코딩돼 있으면 새 앱이 추가될 때마다 여러 화면을 고쳐야 해요.
+
+<a id="폼형-화면--card--form"></a>
 
 ### 폼형 화면 — `Card` + `Form`
 
@@ -229,9 +223,9 @@ export default function XxxPage() {
 
 ### 화면 추가 후 마무리
 
-1. `src/nav.tsx`의 `NAV_ITEMS`에 **한 줄** 추가: `{ path: '/xxx', label: '…', icon: <…/>, element: <XxxPage /> }`
+1. `src/nav.tsx`의 `NAV_ITEMS`에 라우트를 추가하고 필요한 `NAV_PERM` 권한을 연결해요: `{ path: '/xxx', label: '…', icon: <…/>, element: <XxxPage /> }`
 2. 새 엔드포인트가 필요하면 `src/lib/types.ts`(DTO)·`src/api/client.ts`(함수)·`src/mocks/handlers.ts`+`fixtures.ts`(mock) 세 곳 동기화 — 실서버 계약은 `docs/api-contract/admin-api.md`와 대조
-3. `npm run build` · `npm test` 그린 확인
+3. `npm run build` · `npm test` 통과 확인
 
 ---
 
@@ -243,7 +237,7 @@ export default function XxxPage() {
 - [ ] `src/mocks/` — 데모 데이터를 이 앱 도메인으로 교체 (또는 실서버 전환으로 무시)
 - [ ] `src/api/client.ts` / `src/lib/types.ts` — 백엔드 계약과 1:1 확인 (`docs/api-contract/admin-api.md`)
 - [ ] `.env` — `VITE_PROXY_TARGET`(/`_DEV`) 설정, `<repo명> local start`로 자동 mock↔실서버 전환 확인
-- [ ] `npm run build` · `npm test` 그린
+- [ ] `npm run build` · `npm test` 통과
 
 ---
 
@@ -251,6 +245,7 @@ export default function XxxPage() {
 
 - [`../api-contract/README.md`](../api-contract/README.md) — 백엔드 계약 구성
 - [`../api-contract/admin-api.md`](../api-contract/admin-api.md) — 엔드포인트 상세
+- [배포 가이드](./deployment.md) — 홈서버 배포·검증·정리
 - [`./screens.md`](./screens.md) — 기존 화면들이 각각 무엇을 하는지 (화면 가이드)
 - [`../../CLAUDE.md`](../../CLAUDE.md) — 단일 소스 표 · 명령어 참조
 - [`../../README.md`](../../README.md) — 빠른 시작 · 폴더 구조

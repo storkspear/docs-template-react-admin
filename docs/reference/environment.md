@@ -1,20 +1,35 @@
+<a id="environment--프레임워크--라이브러리-인벤토리"></a>
+
 # Environment — 프레임워크 · 라이브러리 인벤토리
 
-이 문서는 template-react-admin 이 쓰는 기술 스택을 버전과 함께 정리해요. 버전의 정본은 `package.json` 이고, 여기 값은 2026-10-28 기준이에요. 시각 요약판은 [`Environment UI`](./environment-ui.md) 에 있어요.
+현재 사용하는 라이브러리와 용도를 정리했어요. 아래 버전 범위는 2026-11-24 소스 기준이며, 정확한 설치 버전은 `package.json`과 lock 파일에서 확인해요.
+
+## 기술 스택 한눈에 보기
+
+```mermaid
+flowchart TD
+  React[React 화면] --> UI[Ant Design · AG Grid]
+  React --> Router[React Router]
+  React --> Query[TanStack Query]
+  Query --> Client[API 클라이언트]
+  Client --> Mock[MSW: 개발용 응답]
+  Client --> Server[Spring: /api/admin/*]
+  Tools[TypeScript · Vite] --> React
+```
+
+화면 내부 상태는 React 상태로, 서버에서 가져온 데이터는 TanStack Query로 관리해요. API 클라이언트는 실행 설정에 따라 Mock 응답이나 서버 응답을 받아요. [실행 모드를 바꾸는 절차](../guide/derived-repo.md#3-mock--실서버-전환)와 [서버 지원 범위](../api-contract/admin-api.md#mock--실서버-차이)는 각 가이드에서 확인해주세요.
 
 ## 코어
 
 | 이름 | 버전 | 용도 |
 |---|---|---|
 | React | ^19.2 | UI 라이브러리 — antd 6 가 React 19 를 네이티브 지원해요. `@ant-design/v5-patch-for-react-19` 는 이 레포에 없어요 |
-| TypeScript | ~7.0 | 언어 — **strict 모드** (`tsconfig.app.json`). 7.x 는 네이티브 포트라 `tsc -b` 가 1초 안에 돌아요 |
+| TypeScript | ~7.0 | 언어. `tsconfig.app.json`에서 strict 모드로 검사해요 |
 | Vite | ^8.1 | 빌드 · dev 서버 (`npm run dev` → :5173) |
 
 ### `skipLibCheck: true` 를 끄지 마세요
 
-`tsconfig.app.json` · `tsconfig.node.json` 양쪽에 켜져 있어요. 끄면 antd 6 의 하위 의존
-(`@rc-component/select` · `picker` · `image`)에서 `.d.ts` 오류 4건이 나와요 — 우리 코드가 아니라
-업스트림 타입 정의 문제라 우리 쪽에서 고칠 수 없어요.
+`tsconfig.app.json`과 `tsconfig.node.json`에서 외부 라이브러리 선언 파일 검사를 생략하고 있어요. 이 설정을 바꿀 때는 의존성 타입 호환성을 다시 확인해주세요. 앱 코드는 `tsc -b`로 검사하며, 검사 시간은 개발 환경에 따라 달라요.
 
 ## UI
 
@@ -24,11 +39,13 @@
 | ag-grid-community / ag-grid-react | ^36.0 | 서버 페이지네이션 그리드 (Theming API) |
 | lucide-react | ^1.25 | 아이콘 — `src/lib/icons.tsx` 가 antd 아이콘 이름으로 재-export |
 | @xyflow/react · @dagrejs/dagre | ^12.11 · ^3.1 | ERD 콘솔(시스템 설계도) 그래프와 자동 배치 — `SchemaPageLazy` 로 지연 로드 |
-| @storkspear/post-editor-core · -react | ^0.5.7 | 게시물 편집기(작성·수정)와 본문 굽기(`toPublishedHtml`) — npm 공개 패키지, 두 개를 같은 판으로. `@tiptap/*` 3.31.3 은 이 패키지의 peer |
-| dompurify | ^3.4 | 게시물 HTML 본문 정화(`src/lib/sanitizeHtml.ts`) — 편집기가 이미 끌고 오던 것을 직접 의존으로 |
+| @storkspear/post-editor-core · -react | ^0.5.7 | 게시물 편집기(작성·수정)와 게시용 HTML 생성(`toPublishedHtml`) — npm 공개 패키지, 두 개를 같은 판으로. `@tiptap/*` 3.31.3 은 이 패키지의 peer |
+| dompurify | ^3.4 | 게시물 HTML 본문 정화(`src/lib/sanitizeHtml.ts`) — 직접 의존성으로 선언해 사용해요 |
 | react-markdown · remark-gfm | ^10.1 · ^4.0 | 옛 markdown 게시물 렌더(`PostBody`) |
 | dayjs | ^1.11 | 날짜 포맷 |
 | 자체 차트 | — | `MiniBarChart` · `MiniPieChart` · `Sparkline` · `StackedBarChart` (외부 차트 라이브러리 없음) |
+
+<a id="antd-5-코드를-가져올-때--antd-6-이관-기준표"></a>
 
 ### antd 5 코드를 가져올 때 — antd 6 이관 기준표
 
@@ -50,10 +67,7 @@
 | `Drawer` `width` · `height` | `size` | deprecated (아직 동작). 숫자·CSS 길이·`'100%'` 모두 그대로 받아요 |
 | `Drawer` `styles.content` | `styles.section` | **필수** — `content` 는 deprecated 이고 DOM 에 적용되지 않아요 |
 
-> deprecated prop 은 타입 검사로 안 걸리고 **렌더 시점 `console.error`** 로만 드러나요.
-> `npm test`(화면 스모크)가 렌더 중 콘솔을 가로채 `deprecated` 문자열을 실패로 처리해요
-> (`src/test/screens.smoke.test.tsx:93-102`). 다만 스모크가 **렌더한 화면만** 볼 수 있으니,
-> 오류 상태 전용 컴포넌트처럼 mock 성공 경로에서 안 그려지는 곳은 여전히 수동 확인이 필요해요.
+> deprecated 속성은 타입 검사만으로 발견하지 못할 수 있어요. 화면 테스트는 렌더링 중 출력되는 deprecation 경고를 검사해요. 정상·서버 오류·네트워크 오류 테스트가 있지만 모든 화면 상태를 빠짐없이 렌더링하는 것은 아니므로, 바꾼 컴포넌트의 상태도 직접 확인해주세요.
 
 **바꾸지 않아도 되는 것** — antd 6 에서도 그대로 유효한 API 예요.
 
@@ -63,11 +77,11 @@
 
 - **`@ant-design/v5-patch-for-react-19` 는 반드시 제거**해야 해요. antd 6 는 React 19 를 네이티브 지원하고, 패치가 남아 있으면 충돌해요.
 - `destroyOnHidden`(5.25 도입, `destroyOnClose` 의 후계)은 6 에서도 그대로예요 — `MediaModal` · `FileDetailDrawer` · `UserDetailDrawer` · `useReasonModal` · `ContentComposePage` · `RolesPage` 가 쓰고 있어요.
-- `ConfigProvider` 를 10곳에서 쓰고 최대 3단까지 중첩돼요. 하위 `ConfigProvider` 에 테마를 안 넘기면 팝업 배경이 상위 무드를 못 따라가요.
+- 중첩 `ConfigProvider`는 해당 영역의 테마나 팝업 설정을 바꿀 때 사용해요. 수정 후 라이트·다크 모드와 팝업 표시를 함께 확인해주세요.
 
 ### CSS 리셋
 
-이 레포에는 Tailwind 가 없어요. preflight 리셋은 `src/index.css` 상단의
+이 레포에는 Tailwind 가 없어요. 기본 스타일 초기화는 `src/index.css` 상단의
 `@import 'antd/dist/reset.css'` 가 담당해요. `postcss` · `autoprefixer` 도 직접 의존이 아니에요
 (`postcss` 는 vite 8 의 직접 의존이라 트리에는 남아요).
 
@@ -85,7 +99,7 @@
 |---|---|---|
 | oxlint | ^1.71 | 린트 |
 | tsc -b | — | 타입 검사 — `npm run build` 게이트 |
-| Vitest | ^4.1 | 화면 스모크 — `npm test`, `.githooks/pre-push` 게이트 |
+| Vitest | ^4.1 | 화면·상태·유틸리티 테스트. `npm test`와 push 전 검사에서 실행해요 |
 | @testing-library/react · jsdom | ^16.3 · ^30.0 | 스모크 렌더 — `src/mocks/handlers.ts` 를 `msw/node` 로 재사용 |
 
 ## 백엔드 계약
@@ -94,6 +108,5 @@
 
 ## 관련 문서
 
-- [`Environment UI`](./environment-ui.md) — 이 인벤토리의 다이어그램 요약
 - [루트 `README.md`](../../README.md) — 빠른 시작 · 화면↔엔드포인트 매핑
 - [루트 `CLAUDE.md`](../../CLAUDE.md) — 단일 소스 표 · 컨벤션 5분 요약
