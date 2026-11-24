@@ -882,7 +882,7 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 
 ## 에러 코드
 
-### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_025`
+### Admin 전용 (`AdminError`, 백엔드 `core-admin-impl`) — `ADMIN_001`~`ADMIN_028`
 
 | 코드 | HTTP | enum | 의미 |
 |---|---|---|---|
@@ -912,6 +912,12 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 | `ADMIN_024` | 400 | `USER_ALREADY_DELETED` | 이미 탈퇴 처리된 사용자를 다시 삭제 시도(§43) |
 | `ADMIN_025` | 410 | `USER_ERASED` | 유예 만료로 이미 완전삭제(익명화)된 사용자의 export·삭제 시도(§42~§43) |
 
+| `ADMIN_026` | 403 | `ADMIN_PERM_GRANT_FORBIDDEN` | 본인이 보유하지 않은 권한 부여 시도 |
+| `ADMIN_027` | 403 | `FILE_KIND_FORBIDDEN` | 대상 파일 종류의 권한 없음 |
+| `ADMIN_028` | 429 | `ADMIN_ACCOUNT_LOCKED` | 로그인 실패 누적으로 계정 잠금. `Retry-After` 헤더와 `details.retryAfterSeconds`로 남은 초를 전달해요 |
+
+이 표는 Spring 서버의 계약이에요. Mock이 권한 부여 범위·파일 종류 권한·로그인 잠금 정책을 모두 재현하지는 않으므로, Mock 화면 검증과 서버 보안 검증을 구분해요.
+
 ### 공통 (`CommonError`, `common-web`)
 
 | 코드 | HTTP | enum | 의미 |
@@ -921,7 +927,7 @@ interface SendResult { result: 'SUCCESS' | 'PARTIAL' | 'FAILED'; recipientCount:
 | `CMN_005` | 403 | `FORBIDDEN` | 권한이 없습니다 (필요한 `PERM_*` 없음, 앱 유저 JWT 로 `/api/admin/**` 접근, 콘솔 JWT 로 `/api/apps/{slug}/**` 접근) |
 | `CMN_006` | 500 | (서버 내부 오류) | catch-all — 처리 안 된 예외가 여기로 떨어져요 |
 
-프론트 쪽 매핑은 `src/api/client.ts`의 `ApiRequestError.code`로 노출돼요(`body.error.code`). 코드별 분기 UI가 필요하면 이 값을 보고 처리하세요 — 현재 화면들은 대부분 `isError`만 보고 공통 `<Alert type="error">`로 뭉뚱그려 처리해요 (`docs/guide/screens.md` 참고).
+프론트 쪽 매핑은 `src/api/client.ts`의 `ApiRequestError.code`로 노출돼요(`body.error.code`). 코드별 분기 UI가 필요하면 이 값을 보고 처리하세요 — 일반 조회 화면은 `QueryErrorState`로 서버 부재와 비즈니스 오류를 구분해요 (`docs/guide/screens.md` 참고).
 
 ---
 
