@@ -80,7 +80,7 @@ export const appConfig = {
 export const brand = {
   50: '#eef2ff', 100: '#e0e7ff', /* … */ 600: '#4f46e5', /* … */ 800: '#3730a3',
 } as const
-export const PRIMARY = brand[600]   // 버튼·링크·활성상태 전부 이 색
+export const PRIMARY = brand[600]   // 무드와 독립적인 보조색
 ```
 
 `brand` 스케일은 이제 **차트 기본색·종이(본문) 액센트 같은 무드 무관 보조색**에만 쓰여요 — antd `ConfigProvider` 테마(`lib/theme.ts`)·ag-grid 테마(`lib/agGrid.ts`)·로그인 그라디언트·`ComponentsPage` 스와치는 `moods.ts`의 무드에서 파생돼요(2026-07 디자인 리프레시). **hex를 컴포넌트에 직접 쓰지 마세요** — `brand[N]` / `semantic.*` / `alpha(hex, a)`를 참조하세요(`CLAUDE.md` §6 컨벤션).
@@ -159,11 +159,12 @@ VITE_PROXY_TARGET_DEV=https://api-dev.example.com
 ```tsx
 // src/pages/XxxPage.tsx
 import { useState } from 'react'
-import { Form, Input, Alert } from 'antd'
+import { Form, Input } from 'antd'
 import { useAdminList } from '../lib/useAdminList'
 import { useAppOptions } from '../lib/useAppOptions'
 import GridPage from '../components/GridPage'
 import AdminDataGrid from '../components/AdminDataGrid'
+import QueryErrorState from '../components/QueryErrorState'
 import { getXxx } from '../api/client'   // client.ts 에 엔드포인트 함수 추가 필요
 import type { Xxx } from '../lib/types'  // types.ts 에 DTO 추가 필요
 
@@ -185,7 +186,7 @@ export default function XxxPage() {
       onReset={() => { form.resetFields(); setFilters({}); list.resetPage() }}
     >
       {list.isError ? (
-        <Alert type="error" showIcon message="목록 오류" description={list.error?.message} />
+        <QueryErrorState error={list.error} title="목록 오류" onRetry={list.refetch} />
       ) : (
         <AdminDataGrid<Xxx>
           columns={xxxColumns}          // ag-grid ColDef[] — 별도 lib/xxxColumns.tsx 로 분리 권장

@@ -22,7 +22,7 @@
 `template-spring`과의 1:1 계약이에요. 응답 스키마·에러 코드가 어긋나면 mock과 실서버 양쪽이 동시에 안 맞아요.
 
 - [`api-contract/README.md`](./api-contract/README.md) — 계약 문서 구성 · 쌍 운영 규칙 · 진실의 출처
-- [`api-contract/admin-api.md`](./api-contract/admin-api.md) — 엔드포인트 전체(백엔드 매핑 전부 + mock 전용 발송 — 정확한 개수·목록은 그 문서 서두의 실측 기준): 요청 파라미터 · 응답 shape · 에러 코드(`ADMIN_001`~`ADMIN_025`, `CMN_001`/`CMN_004`/`CMN_005`/`CMN_006`) · 시맨틱 노트(gross/net, DAU/MAU, 리텐션 D1/D7, mock↔실서버 토글)
+- [`api-contract/admin-api.md`](./api-contract/admin-api.md) — 엔드포인트 전체(백엔드 매핑 전부 + mock 전용 발송 — 정확한 개수·목록은 그 문서 서두의 실측 기준): 요청 파라미터 · 응답 shape · 에러 코드(`ADMIN_001`~`ADMIN_028`, `CMN_001`/`CMN_004`/`CMN_005`/`CMN_006`) · 시맨틱 노트(gross/net, DAU/MAU, 리텐션 D1/D7, mock↔실서버 토글)
 
 ## 화면 가이드 ([`guide/screens.md`](./guide/screens.md))
 
